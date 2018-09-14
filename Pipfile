@@ -6,6 +6,8 @@ name = "pypi"
 [packages]
 pytest = "*"
 pytest-mock = "*"
+pycairo = "*"
+pygobject = "*"
 
 [dev-packages]
 pylint = "*"
