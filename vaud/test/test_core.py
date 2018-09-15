@@ -1,33 +1,48 @@
-import pytest, logging, time
+import logging
+import time
+
+import pytest
+import pytest_twisted
 from pytest_mock import mocker
+from twisted.internet import reactor, defer
+from twisted.internet.address import IPv4Address
+from twisted.python import log
+
 from vaud.core import Node
+
+observer = log.PythonLoggingObserver()
+observer.start()
+
+# pylint: disable=maybe-no-member
 
 @pytest.fixture
 def nodes(caplog, mocker):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
-    nodes = [Node(33098+i, 0.1) for i in range(2)]
+    caplog.set_level(logging.DEBUG, logger='twisted')
+    nodes = [Node(reactor, 33000+i, 0.1) for i in range(2)]
 
     yield nodes
 
+    deferreds = []
     for n in nodes:
-        n.shutdown()
+        deferreds.append(n.shutdown())
+    pytest_twisted.blockon(defer.gatherResults(deferreds))
 
 def test_transmissions(caplog, mocker, nodes):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
 
-    for n in nodes:
-        mocker.patch.object(n, "_inputHandler")
-
+    #for n in nodes:
+    #    mocker.patch.object(n, "_timeout")
+    
     n1, n2 = nodes
-    msg = "Test message"
 
-    n1.send(msg, n2.address)
-    time.sleep(.001)
-    n2._inputHandler.assert_called_with(msg)
+    n1.callRemoteMethod(n2.address, "testMethod")
+    time.sleep(.5)
 
-    n2.send(msg, n1.address)
-    time.sleep(.001)
-    n1._inputHandler.assert_called_with(msg)
+    n2.callRemoteMethod(n1.address, "testMethod")
+    time.sleep(.5)
+
+    # TODO mocking and assertions
 
 def test_timer(caplog, mocker, nodes):
     caplog.set_level(logging.DEBUG, logger='vaud.core')

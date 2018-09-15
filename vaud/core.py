@@ -1,9 +1,18 @@
-import socket, sys, time, logging
+import logging
+import pickle
+import socket
+import time
 from threading import Thread
+from typing import List, Union
 
-CHARSET = "utf-8"
+from twisted.application import internet
+from twisted.internet import endpoints, protocol, reactor, defer
+from twisted.internet.interfaces import IAddress
+from twisted.internet.address import IPv4Address
+from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
+from twisted.protocols.basic import LineReceiver
 
-logger = logging.Logger("vaud.node")
+logger = logging.getLogger(__name__)
 
 """
 Returns the local machine's primary IP address.
@@ -19,85 +28,100 @@ def get_ip():
         s.close()
     return ip
 
-"""
-A class for storing a hostname and a port
-"""
-class Address:
-    
-    def __init__(self, host, port):
-        self._host = host
-        self._port = port
-    
-    @property
-    def host(self):
-        return self._host
-    
-    @property
-    def port(self):
-        return self._port
-    
-    def toTuple(self):
-        return (self._host, self._port)
-    
-    def __str__(self):
-        return "{s}:{d}".format(self._host, self._port)
-
 
 class Node:
-
-    """
-    Initializes a new node running a thread listening for incoming messages on the port specified.
-    """
-    def __init__(self, port: int, timeoutInterval: int = None):
-        self._address = Address(get_ip(), port)
-
-        # create a UDP socket
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._socket.settimeout(.1)
-
-        # bind socket to port
-        logger.info('Starting up node at %s', self._address)
-        self._socket.bind(self._address.toTuple())
-        # start listening
-        self._listener = Node.Listener(self)
-        self._listener.start()
-
+    
+    def __init__(self, reactor, port: int, timeoutInterval: int = None):
+        """
+        Initializes a new node listening for incoming messages on the port specified.
+        """
+        logger.info("Initializing node on port %d", port)
+        self.reactor = reactor
+        self._address = IPv4Address('TCP', get_ip(), port)
+        self._protocolFactory = self.ProtocolFactory(self)
+        self._port = None
+        self._startServer()
 
         self._timer = None
         if timeoutInterval is not None:
             self._timer = Node.Timer(self, timeoutInterval)
             self._timer.start()
+    
+    @defer.inlineCallbacks
+    def _startServer(self):
+        self._port = yield TCP4ServerEndpoint(self.reactor, self.port).listen(self._protocolFactory)
+    
+    class RemoteCallProtocol(LineReceiver):
+        """
+        A Twisted protocol implementation that serializes, transmits, deserializes and executes method calls
+        """
+        def __init__(self, node: "Node", factory, peerAddress: IAddress):
+            self._node = node
+            self.factory = factory
+            self.peerAddress = peerAddress
+            self.shutdownFinished = defer.Deferred()
         
-    class Listener(Thread):
+        def connectionMade(self):
+            logger.info("Connected to %s.", self.peerAddress)
+            # check if there is a deferred for this instance that we have to trigger
+            if self.peerAddress in self.factory.instances:
+                instance = self.factory.instances[self.peerAddress]
+                if isinstance(instance, defer.Deferred):
+                    instance.callback(self)
+            self.factory.instances[self.peerAddress] = self
+        
+        def connectionLost(self, reason):
+            logger.info("Connection to %s lost.", self.peerAddress)
+            self.factory.instances.pop(self.peerAddress)
+            self.shutdownFinished.callback(True)
+        
+        def lineReceived(self, line: str):
+            logger.debug("Received line: %s", line)
+            #arg_list = pickle.load(line)
+            # TODO Checking and making the call
+            pass
+        
+        def sendCall(self, methodName: str, arguments: List = None):
+            # pickle call and send it 
+            toBePickled = [methodName]
+            if arguments is not None:
+                toBePickled.extend(arguments)
+            self.sendLine(pickle.dump(toBePickled))
+    
+    class ProtocolFactory(protocol.ClientFactory):
 
         def __init__(self, node: "Node"):
-            Thread.__init__(self)
-            self._node = node
-            self._listening = False
+            self.node = node
+            self.instances = {}
 
-        def run(self):
-            logger.debug('%s listening', self._node)
-            self._listening = True
-            while self._listening:
-                try:
-                    data, address = self._node._socket.recvfrom(4096)
-                except socket.timeout:
-                    continue
-                
-                if not data:
-                    continue
-                
-                source = Address(*address)
-                logger.debug('%s: Received %d bytes from Node at %d', self._node, len(data), source)
-                self._node._inputHandler(data.decode(CHARSET))
-            
-            # close the socket
-            self._node._socket.close()
+        def buildProtocol(self, addr):
+            # Overrides the protocol.Factory.buildProtocol method.
+            #self.resetDelay()
+            return Node.RemoteCallProtocol(self.node, self, addr)
+
+        def getProtocol(self, peerAddress: IAddress) -> Union["Node.RemoteCallProtocol", defer.Deferred]:
+            """
+            Custom method for returning either a protocol instance or a deferred for a new protocol instance
+            """
+            if not peerAddress in self.instances:
+                # there is no (maybe deferred) protocol instance for the peer
+                # we have to establish a new connection in order to get a protocol instance
+                self.instances[peerAddress] = defer.Deferred()
+                logger.info("Establishing TCP connection to %s...", peerAddress)
+                self.node.reactor.connectTCP(peerAddress.host, peerAddress.port, self)
+            return self.instances[peerAddress]
         
-        def shutdown(self):
-            self._listening = False
-            self.join()
-    
+        def shutdownProtocols(self) -> defer.Deferred:
+            for protocol in self.instances.values():
+                deferreds = []
+                if not isinstance(protocol, defer.Deferred):
+                    deferreds.append(protocol.shutdownFinished)
+                    protocol.transport.loseConnection()
+            return defer.gatherResults(deferreds)
+        
+        def clientConnectionFailed(self, connector, reason):
+            logger.warn("Client connection failed")
+
     class Timer(Thread):
 
         def __init__(self, node: "Node", timeoutInterval: int):
@@ -109,8 +133,8 @@ class Node:
         def run(self):
             self._running = True
             while self._running:
-                time.sleep(self._timeoutInterval)
                 self._node._timeout()
+                time.sleep(self._timeoutInterval)
         
         def shutdown(self):
             self._running = False
@@ -119,26 +143,47 @@ class Node:
     """
     To be overridden by subclasses
     """
-    def _inputHandler(self, data: str):
-        raise NotImplementedError
-    
-    """
-    To be overridden by subclasses
-    """
     def _timeout(self):
-        raise NotImplementedError
+        pass
     
-    def send(self, data: str, address: Address):
-        self._socket.sendto(data.encode(CHARSET), address.toTuple())
+    @defer.inlineCallbacks
+    def callRemoteMethod(self, remoteAddress: IAddress, methodName: str, arguments: List = None):
+        protocol = yield self._protocolFactory.getProtocol(remoteAddress)
+
+        protocol.sendCall(methodName, arguments)
     
     def shutdown(self):
-        self._listener.shutdown()
+        stoppedListening = defer.maybeDeferred(self._port.stopListening)
+        shutdownProtocols = self._protocolFactory.shutdownProtocols()
         if self._timer is not None:
             self._timer.shutdown()
+        return defer.gatherResults([stoppedListening, shutdownProtocols])
+    
+    @property
+    def host(self):
+        return self._address.host
 
+    @property
+    def port(self):
+        return self._address.port
+    
     @property
     def address(self):
         return self._address
+
+    def __str__(self):
+        return "Node at {}".format(self.address)
+
+"""
+A class representing a remote node.
+Methods called on its instances will be executed on the
+remote Node instance, providing the same parameters.
+"""
+class RemoteNode:
+    
+    def __init__(self, node: Node, address: IAddress):
+        self._node = node
+        self._address = address
     
     def __str__(self):
-        return "Node at {}".format(self._address)
+        return "Remote Node at {}".format(self._address)
