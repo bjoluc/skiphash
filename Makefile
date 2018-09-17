@@ -5,7 +5,7 @@ dev:
 	pipenv install --dev
 
 test:
-	pipenv run py.test -v vaud
+	pipenv run py.test -v --exitfirst vaud
 
 requirements:
 	pipenv run pipenv_to_requirements
