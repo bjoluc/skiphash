@@ -7,6 +7,8 @@ name = "pypi"
 pytest = "*"
 pytest-mock = "*"
 twisted = "*"
+pycairo = "*"
+pygobject = "*"
 
 [dev-packages]
 pylint = "*"
