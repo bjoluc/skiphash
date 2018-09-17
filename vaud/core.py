@@ -1,189 +1,178 @@
 import logging
-import pickle
-import socket
-import time
-from threading import Thread
-from typing import List, Union
 
-from twisted.application import internet
-from twisted.internet import endpoints, protocol, reactor, defer
-from twisted.internet.interfaces import IAddress
-from twisted.internet.address import IPv4Address
-from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
-from twisted.protocols.basic import LineReceiver
+from twisted.internet import defer, reactor
+from twisted.spread import flavors, pb
+
+from vaud import thisHost
 
 logger = logging.getLogger(__name__)
 
-"""
-Returns the local machine's primary IP address.
-"""
-def get_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(('10.255.255.255', 1))
-        ip = s.getsockname()[0]
-    except:
-        ip = '127.0.0.1'
-    finally:
-        s.close()
-    return ip
+# For twisted reactor method calls:
+# pylint: disable=maybe-no-member
 
-
-class Node:
-    
-    def __init__(self, reactor, port: int, timeoutInterval: int = None):
-        """
-        Initializes a new node listening for incoming messages on the port specified.
-        """
-        logger.info("Initializing node on port %d", port)
-        self.reactor = reactor
-        self._address = IPv4Address('TCP', get_ip(), port)
-        self._protocolFactory = self.ProtocolFactory(self)
-        self._port = None
-        self._startServer()
-
-        self._timer = None
-        if timeoutInterval is not None:
-            self._timer = Node.Timer(self, timeoutInterval)
-            self._timer.start()
-    
-    @defer.inlineCallbacks
-    def _startServer(self):
-        self._port = yield TCP4ServerEndpoint(self.reactor, self.port).listen(self._protocolFactory)
-    
-    class RemoteCallProtocol(LineReceiver):
-        """
-        A Twisted protocol implementation that serializes, transmits, deserializes and executes method calls
-        """
-        def __init__(self, node: "Node", factory, peerAddress: IAddress):
-            self._node = node
-            self.factory = factory
-            self.peerAddress = peerAddress
-            self.shutdownFinished = defer.Deferred()
-        
-        def connectionMade(self):
-            logger.info("Connected to %s.", self.peerAddress)
-            # check if there is a deferred for this instance that we have to trigger
-            if self.peerAddress in self.factory.instances:
-                instance = self.factory.instances[self.peerAddress]
-                if isinstance(instance, defer.Deferred):
-                    instance.callback(self)
-            self.factory.instances[self.peerAddress] = self
-        
-        def connectionLost(self, reason):
-            logger.info("Connection to %s lost.", self.peerAddress)
-            self.factory.instances.pop(self.peerAddress)
-            self.shutdownFinished.callback(True)
-        
-        def lineReceived(self, line: str):
-            logger.debug("Received line: %s", line)
-            #arg_list = pickle.load(line)
-            # TODO Checking and making the call
-            pass
-        
-        def sendCall(self, methodName: str, arguments: List = None):
-            # pickle call and send it 
-            toBePickled = [methodName]
-            if arguments is not None:
-                toBePickled.extend(arguments)
-            self.sendLine(pickle.dump(toBePickled))
-    
-    class ProtocolFactory(protocol.ClientFactory):
-
-        def __init__(self, node: "Node"):
-            self.node = node
-            self.instances = {}
-
-        def buildProtocol(self, addr):
-            # Overrides the protocol.Factory.buildProtocol method.
-            #self.resetDelay()
-            return Node.RemoteCallProtocol(self.node, self, addr)
-
-        def getProtocol(self, peerAddress: IAddress) -> Union["Node.RemoteCallProtocol", defer.Deferred]:
-            """
-            Custom method for returning either a protocol instance or a deferred for a new protocol instance
-            """
-            if not peerAddress in self.instances:
-                # there is no (maybe deferred) protocol instance for the peer
-                # we have to establish a new connection in order to get a protocol instance
-                self.instances[peerAddress] = defer.Deferred()
-                logger.info("Establishing TCP connection to %s...", peerAddress)
-                self.node.reactor.connectTCP(peerAddress.host, peerAddress.port, self)
-            return self.instances[peerAddress]
-        
-        def shutdownProtocols(self) -> defer.Deferred:
-            for protocol in self.instances.values():
-                deferreds = []
-                if not isinstance(protocol, defer.Deferred):
-                    deferreds.append(protocol.shutdownFinished)
-                    protocol.transport.loseConnection()
-            return defer.gatherResults(deferreds)
-        
-        def clientConnectionFailed(self, connector, reason):
-            logger.warn("Client connection failed")
-
-    class Timer(Thread):
-
-        def __init__(self, node: "Node", timeoutInterval: int):
-            Thread.__init__(self)
-            self._node = node
-            self._timeoutInterval = timeoutInterval
-            self._running = False
-        
-        def run(self):
-            self._running = True
-            while self._running:
-                self._node._timeout()
-                time.sleep(self._timeoutInterval)
-        
-        def shutdown(self):
-            self._running = False
-            self.join()
-    
+class NodeFactory:
     """
-    To be overridden by subclasses
+    A factory for node objects. Only run one NodeFactory instance at a time!
+    If localNodeRegistry is not set to false, the factory will index
+    its Node instances by ports and hand them out on request.
     """
-    def _timeout(self):
-        pass
-    
-    @defer.inlineCallbacks
-    def callRemoteMethod(self, remoteAddress: IAddress, methodName: str, arguments: List = None):
-        protocol = yield self._protocolFactory.getProtocol(remoteAddress)
 
-        protocol.sendCall(methodName, arguments)
+    def __init__(self, startPort: int, entryNodeHost: str, entryNodePort: int, localNodeRegistry: bool = True):
+        self._nextPort = startPort
+        self._entryNodeReference = NodeReference(entryNodeHost, entryNodePort)
+        self.hasRegistry = localNodeRegistry
+
+        if localNodeRegistry:
+            self._registry = {}
+
+    def newNode(self):
+        # get new port
+        port = self._nextPort
+        self._nextPort += 1
+        node = Node(port)
+        if self.hasRegistry:
+            self._registry[port] = node
+        return node
+
+class NodeReference(flavors.Copyable, flavors.RemoteCopy):
+    """
+    A NodeReference stores a host and a port of a distant node
+    and will on demand connect to that node.
+    Also, remote node methods can be invoked directly on a NodeReference
+    and will be executed by the referenced node.
+    """
+
+    _remoteReferenceDict = {}
+    """A dictionary for storing existing RemoteReference instances, indexed by their host and port"""
+
+    def __init__(self, host: str = None, port: int = None):
+        self._host = host
+        self._port = port
+        self._remoteReference = None
     
-    def shutdown(self):
-        stoppedListening = defer.maybeDeferred(self._port.stopListening)
-        shutdownProtocols = self._protocolFactory.shutdownProtocols()
-        if self._timer is not None:
-            self._timer.shutdown()
-        return defer.gatherResults([stoppedListening, shutdownProtocols])
+    def __getattr__(self, attrName: str):
+        """
+        Turn non-existing methods into remote calls (if at least one identically-named
+        method in the local code has been decorated with @remoteMethod)
+        """
+        if attrName not in remoteMethod.methodNames:
+            raise AttributeError("A method named '{}' is not allowed to be called remotely.".format(attrName))
+       
+        # create a wrapper for executing the remote call
+        @defer.inlineCallbacks
+        def remoteCallWrapper(*args, **kwargs):
+            remote = yield self.remote
+            returnValue = yield remote.callRemote(attrName, *args, **kwargs)
+            return returnValue
+        
+        return remoteCallWrapper
+    
+    def __eq__(self, obj):
+        if not isinstance(obj, NodeReference):
+            raise NotImplementedError()
+        return self.host == obj.host and self.port == obj.port
+    
+    def getStateToCopy(self):
+        return (self.host, self.port)
+        
+    def setCopyableState(self, state):
+        self._host, self._port = state
+
+    def id(self):
+        raise NotImplementedError()
     
     @property
     def host(self):
-        return self._address.host
-
+        if self._host is None:
+            raise AttributeError(("host is None! When manually instanciating a NodeReference, "
+                                    "both host and port have to be passed to the constructor."))
+        return self._host
+    
     @property
     def port(self):
-        return self._address.port
+        if self._port is None:
+            raise AttributeError(("port is None! When manually instanciating a NodeReference, "
+                                    "both host and port have to be passed to the constructor."))
+        return self._port
     
     @property
-    def address(self):
-        return self._address
+    def remote(self):
+        """
+        A (maybe deferred) pb.Reference to the corresponding remote node.
+        """
+        if self._remoteReference is None:
+            if (self.host, self.port) in self._remoteReferenceDict:
+                # Reference already exists on this host
+                self._remoteReference = self._remoteReferenceDict[self.host, self.port]
+            else:
+                # RemoteReference does not yet exist on this host
+                logger.info("Requesting remote node reference from %s:%d", self.host, self.port)
+                factory = pb.PBClientFactory()
+                reactor.connectTCP(self.host, self.port, factory)
+                deferred = factory.getRootObject()
+                deferred.addCallbacks(self._gotRemoteReference, self._failedGettingRemoteReference)
+                self._remoteReference = deferred
+                self._remoteReferenceDict[self.host, self.port] = deferred
 
-    def __str__(self):
-        return "Node at {}".format(self.address)
+        return self._remoteReference
+        
+    def _failedGettingRemoteReference(self, reason):
+        logger.warn("Error retrieving remote node: %s", reason)
+        self._remoteReference = None
+        self._remoteReferenceDict[self.host, self.port] = None
+        return reason # pass reason to next callback
+    
+    def _gotRemoteReference(self, instance: flavors.Referenceable):
+        logger.info("Got remote node reference %s", instance)
+        self._remoteReference = instance
+        self._remoteReferenceDict[self.host, self.port] = instance
+        return instance # pass reference on to the next callback
 
-"""
-A class representing a remote node.
-Methods called on its instances will be executed on the
-remote Node instance, providing the same parameters.
-"""
-class RemoteNode:
+pb.setUnjellyableForClass(NodeReference, NodeReference)
+
+
+def remoteMethod(method):
+    """
+    A decorator allowing methods to be called remotely.
+    It also maintains a set of names of the methods it has been used for.
+    """
+    method.is_remote_method = True
+    remoteMethod.methodNames.add(method.__name__)
+    return method
+
+remoteMethod.methodNames = set()
     
-    def __init__(self, node: Node, address: IAddress):
-        self._node = node
-        self._address = address
+class Node(pb.Root):
+    """
+    A local node that offers methods for both local and remote callers.
+    In order to make a method callable by a remote caller, it has to be
+    decorated with the @remoteMethod decorator.
+    """
+
+    def __init__(self, port: int):
+        self.reference = NodeReference(thisHost, port)
+        self._portObject = reactor.listenTCP(port, pb.PBServerFactory(self))
     
-    def __str__(self):
-        return "Remote Node at {}".format(self._address)
+    def __getattr__(self, attrName: str):
+        """
+        Fakes the existence of a 'remote_'-prefixed method for each method
+        being decorated with the @remoteMethod decorator.
+        """
+        if attrName.startswith("remote_") and len(attrName) > 7:
+            suffix = attrName[7:]
+            if not suffix in dir(self):
+                raise AttributeError("There is no member named '{}' or '{}'".format(attrName, suffix))
+            if not getattr(self, suffix).is_remote_method:
+                raise AttributeError("The method '{}' is not allowed to be called remotely.".format(suffix))
+            # the requested method may be called remotely
+            return getattr(self, suffix)
+        
+        # delegating the lookup to object for all other requests
+        return object.__getattr__(self, attrName)
+
+    def shutdown(self):
+        """
+        Shuts down the node and returns a deferred that fires
+        successfully when shutdown is completed.
+        """
+        return self._portObject.loseConnection()
