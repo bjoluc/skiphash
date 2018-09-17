@@ -6,11 +6,13 @@ name = "pypi"
 [packages]
 pytest = "*"
 pytest-mock = "*"
+twisted = "*"
 
 [dev-packages]
 pylint = "*"
 mypy-lang = "*"
 pipenv-to-requirements = "*"
+pytest-twisted = "*"
 
 [requires]
 python_version = "3.6"
