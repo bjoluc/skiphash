@@ -9,7 +9,7 @@ from twisted.internet.address import IPv4Address
 from twisted.python import log
 
 from vaud import thisHost
-from vaud.core import Node, NodeFactory, NodeReference, remoteMethod
+from vaud.core import CopyableBitArray, Node, NodeFactory, NodeReference, randomBitArray, remoteMethod
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -22,7 +22,7 @@ def nodes(caplog, mocker):
     caplog.set_level(logging.DEBUG, logger='twisted')
 
     factory = NodeFactory(30000, localNodeRegistry=False)
-    nodes = [factory.newNode() for _ in range(2)]
+    nodes = [factory.newNode() for _ in range(3)]
 
     yield nodes
 
@@ -63,7 +63,7 @@ def test_reference_copying(caplog, mocker, nodes):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
     caplog.set_level(logging.DEBUG, logger='twisted')
 
-    n1, n2 = nodes
+    n1, n2 = nodes[0:2]
 
     # add a mocked 'test' method
     mocker.patch.object(n2, "test", create=True)
@@ -75,3 +75,23 @@ def test_reference_copying(caplog, mocker, nodes):
     # implicitly call n2.test remotely via its NodeReference object
     returnValue = yield n2.reference.test()
     assert returnValue == n1.reference
+
+@pytest_twisted.inlineCallbacks
+def test_bytearray_copying(caplog, mocker, nodes):
+    caplog.set_level(logging.DEBUG, logger='vaud.core')
+    caplog.set_level(logging.DEBUG, logger='twisted')
+
+    n = nodes[2]
+
+    # add a mocked 'test' method
+    mocker.patch.object(n, "test", create=True)
+    bitArray = randomBitArray(8)
+    print(bitArray)
+    n.test.return_value = CopyableBitArray(bitArray) # set a bitarray as the return value
+    # emulating the @remoteMethod decorator
+    n.test.is_remote_method = True
+    remoteMethod.methodNames.add("test")
+
+    # implicitly call n2.test remotely via its NodeReference object
+    returnValue = yield n.reference.test()
+    assert returnValue == bitArray

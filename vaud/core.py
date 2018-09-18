@@ -1,5 +1,7 @@
 import logging
+import random
 
+from bitarray import bitarray
 from twisted.internet import defer, reactor
 from twisted.spread import flavors, pb
 
@@ -10,11 +12,33 @@ logger = logging.getLogger(__name__)
 # For twisted reactor method calls:
 # pylint: disable=maybe-no-member
 
+def randomBitArray(byteSize):
+    byteString = bytes(random.getrandbits(8) for _ in range(byteSize))
+    bitArray = bitarray()
+    bitArray.frombytes(byteString)
+    return bitArray
+
+class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
+    """
+    Like bitarray, but copyable by Twisted's Perspective Broker.
+    Note: Do only use multiples of 8 as the BitArray length, as copying
+    will transfer the BitArray into bytes and backwards.
+    """
+
+    def getStateToCopy(self):
+        return self.tobytes()
+        
+    def setCopyableState(self, state):
+        self.frombytes(state)
+
+pb.setUnjellyableForClass('vaud.core.CopyableBitArray', CopyableBitArray)
+
 class NodeFactory:
     """
-    A factory for node objects. Only run one NodeFactory instance at a time!
-    If localNodeRegistry is not set to false, the factory will index
-    its Node instances by ports and hand them out on request.
+    A factory for Node objects. Only run one NodeFactory instance at a time!
+    If localNodeRegistry is not set to false, the factory will create a
+    publically accessible dictionary and add its Node instances there,
+    indexed by their ports.
     """
 
     def __init__(self, startPort: int, localNodeRegistry: bool = True):
@@ -22,7 +46,7 @@ class NodeFactory:
         self.hasRegistry = localNodeRegistry
 
         if localNodeRegistry:
-            self._registry = {}
+            self.registry = {}
 
     def newNode(self):
         # get new port
@@ -166,7 +190,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         self._remoteReferenceDict[self.host, self.port] = instance
         return instance # pass reference on to the next callback
 
-pb.setUnjellyableForClass(NodeReference, NodeReference)
+pb.setUnjellyableForClass('vaud.core.NodeReference', NodeReference)
 
 
 def remoteMethod(constantReturnValue = False):

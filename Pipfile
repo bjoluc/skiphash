@@ -9,12 +9,15 @@ pytest-mock = "*"
 twisted = "*"
 pycairo = "*"
 pygobject = "*"
+numpy = "*"
+bitarray = "*"
 
 [dev-packages]
 pylint = "*"
 mypy-lang = "*"
 pipenv-to-requirements = "*"
 pytest-twisted = "*"
+rope = "*"
 
 [requires]
 python_version = "3.6"
