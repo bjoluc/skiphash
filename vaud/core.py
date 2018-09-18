@@ -17,9 +17,8 @@ class NodeFactory:
     its Node instances by ports and hand them out on request.
     """
 
-    def __init__(self, startPort: int, entryNodeHost: str, entryNodePort: int, localNodeRegistry: bool = True):
+    def __init__(self, startPort: int, localNodeRegistry: bool = True):
         self._nextPort = startPort
-        self._entryNodeReference = NodeReference(entryNodeHost, entryNodePort)
         self.hasRegistry = localNodeRegistry
 
         if localNodeRegistry:
@@ -32,14 +31,23 @@ class NodeFactory:
         node = Node(port)
         if self.hasRegistry:
             self._registry[port] = node
+        self.afterCreation(node)
         return node
+    
+    def afterCreation(self, node: "Node"):
+        """
+        Will be called after a node has been created,
+        providing the new node instance.
+        Use this in your subclasses.
+        """
 
 class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     """
     A NodeReference stores a host and a port of a distant node
     and will on demand connect to that node.
     Also, remote node methods can be invoked directly on a NodeReference
-    and will be executed by the referenced node.
+    and will be executed by the referenced node, returning a (maybe) deferred for
+    the remote method's result.
     """
 
     _remoteReferenceDict = {}
@@ -49,20 +57,30 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         self._host = host
         self._port = port
         self._remoteReference = None
+        self._cache = {}
     
     def __getattr__(self, attrName: str):
         """
         Turn non-existing methods into remote calls (if at least one identically-named
-        method in the local code has been decorated with @remoteMethod)
+        method in the local code has been decorated with @remoteMethod).
         """
         if attrName not in remoteMethod.methodNames:
             raise AttributeError("A method named '{}' is not allowed to be called remotely.".format(attrName))
+        
+        cacheable = attrName in remoteMethod.constantReturnValueMethodNames
+        if cacheable and attrName in self._cache:
+            return self._cache[attrName]
        
         # create a wrapper for executing the remote call
         @defer.inlineCallbacks
         def remoteCallWrapper(*args, **kwargs):
             remote = yield self.remote
-            returnValue = yield remote.callRemote(attrName, *args, **kwargs)
+            deferred = remote.callRemote(attrName, *args, **kwargs)
+            if cacheable:
+                self._cache[attrName] = deferred
+            returnValue = yield deferred
+            if cacheable:
+                self._cache[attrName] = returnValue
             return returnValue
         
         return remoteCallWrapper
@@ -77,9 +95,6 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         
     def setCopyableState(self, state):
         self._host, self._port = state
-
-    def id(self):
-        raise NotImplementedError()
     
     @property
     def host(self):
@@ -131,16 +146,25 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
 pb.setUnjellyableForClass(NodeReference, NodeReference)
 
 
-def remoteMethod(method):
+def remoteMethod(constantReturnValue = False):
     """
-    A decorator allowing methods to be called remotely.
+    A decorator factory allowing methods to be called remotely.
     It also maintains a set of names of the methods it has been used for.
+    If constantReturnValue is set to true, a NodeReference will only call
+    the remote method once, cache the result and further use the cached result.
     """
-    method.is_remote_method = True
-    remoteMethod.methodNames.add(method.__name__)
-    return method
+    def decorator(method):
+        method.is_remote_method = True
+        methodName = method.__name__
+        remoteMethod.methodNames.add(methodName)
+        if constantReturnValue:
+            remoteMethod.constantReturnValueMethodNames.add(methodName)
+        return method
+    
+    return decorator
 
 remoteMethod.methodNames = set()
+remoteMethod.constantReturnValueMethodNames = set()
     
 class Node(pb.Root):
     """

@@ -21,7 +21,7 @@ def nodes(caplog, mocker):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
     caplog.set_level(logging.DEBUG, logger='twisted')
 
-    factory = NodeFactory(30002, thisHost, 30002, localNodeRegistry=False)
+    factory = NodeFactory(30000, localNodeRegistry=False)
     nodes = [factory.newNode() for _ in range(2)]
 
     yield nodes
