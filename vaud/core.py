@@ -59,6 +59,34 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         self._remoteReference = None
         self._cache = {}
     
+    def __lt__(self, other):
+        if not isinstance(other, NodeReference):
+            raise NotImplementedError()
+        if self.host == other.host:
+            return self.port < other.port
+        return self.host < other.host
+    
+    def __le__(self, other):
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __eq__(self, other):
+        if not isinstance(other, NodeReference):
+            raise NotImplementedError()
+        return self.host == other.host and self.port == other.port
+    
+    def __ge__(self, other):
+        return self.__gt__(other) or self.__eq__(other)
+    
+    def __gt__(self, other):
+        if not isinstance(other, NodeReference):
+            raise NotImplementedError()
+        if self.host == other.host:
+            return self.port > other.port
+        return self.host > other.host
+    
+    def __ne__(self, other):
+        return not self.__eq__(other)
+    
     def __getattr__(self, attrName: str):
         """
         Turn non-existing methods into remote calls (if at least one identically-named
@@ -84,11 +112,6 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
             return returnValue
         
         return remoteCallWrapper
-    
-    def __eq__(self, obj):
-        if not isinstance(obj, NodeReference):
-            raise NotImplementedError()
-        return self.host == obj.host and self.port == obj.port
     
     def getStateToCopy(self):
         return (self.host, self.port)
