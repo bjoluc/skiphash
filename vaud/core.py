@@ -3,6 +3,7 @@ import random
 
 from bitarray import bitarray
 from ipaddress import IPv4Address
+from twisted.application.internet import TimerService
 from twisted.internet import defer, reactor
 from twisted.spread import flavors, pb
 
@@ -311,9 +312,11 @@ class Node(pb.Root):
     decorated with the @remoteMethod decorator.
     """
 
-    def __init__(self, port: int):
+    def __init__(self, port: int, timeoutInterval: int = 2):
         self.reference = NodeReference(thisHost, port)
         self._portObject = reactor.listenTCP(port, pb.PBServerFactory(self))
+        self._timer = TimerService(timeoutInterval, self.timeout)
+        self._timer.startService()
     
     def __getattr__(self, attrName: str):
         """
@@ -332,9 +335,18 @@ class Node(pb.Root):
         # delegating the lookup to object for all other requests
         return object.__getattr__(self, attrName)
 
+    @defer.inlineCallbacks
     def shutdown(self):
         """
         Shuts down the node and returns a deferred that fires
         successfully when shutdown is completed.
         """
-        return self._portObject.loseConnection()
+        yield self._timer.stopService()
+        returnValue = yield self._portObject.loseConnection()
+        return returnValue
+    
+    def timeout(self):
+        """
+        A periodically called method.
+        """
+        
