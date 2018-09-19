@@ -163,6 +163,10 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         return self._port
     
     @property
+    def id(self):
+        return "{s}:{d}".format(self.host, self.port)
+    
+    @property
     def remote(self):
         """
         A (maybe deferred) pb.Reference to the corresponding remote node.
@@ -312,7 +316,7 @@ class Node(pb.Root):
     decorated with the @remoteMethod decorator.
     """
 
-    def __init__(self, port: int, timeoutInterval: int = 2):
+    def __init__(self, port: int, timeoutInterval: int = 10):
         self.reference = NodeReference(thisHost, port)
         self._portObject = reactor.listenTCP(port, pb.PBServerFactory(self))
         self._timer = TimerService(timeoutInterval, self.timeout)
