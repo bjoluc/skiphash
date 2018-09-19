@@ -2,6 +2,7 @@ import logging
 import random
 
 from bitarray import bitarray
+from ipaddress import IPv4Address
 from twisted.internet import defer, reactor
 from twisted.spread import flavors, pb
 
@@ -67,7 +68,7 @@ class NodeFactory:
 
 class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     """
-    A NodeReference stores a host and a port of a distant node
+    A NodeReference stores a host (IPv4Address, provided as string) and a port (int) of a distant node
     and will on demand connect to that node.
     Also, remote node methods can be invoked directly on a NodeReference
     and will be executed by the referenced node, returning a (maybe) deferred for
@@ -78,7 +79,8 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     """A dictionary for storing existing RemoteReference instances, indexed by their host and port"""
 
     def __init__(self, host: str = None, port: int = None):
-        self._host = host
+        if host is not None:
+            self._host = IPv4Address(host)
         self._port = port
         self._remoteReference = None
         self._cache = {}
@@ -116,6 +118,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         Turn non-existing methods into remote calls (if at least one identically-named
         method in the local code has been decorated with @remoteMethod).
         """
+
         if attrName not in remoteMethod.methodNames:
             raise AttributeError("A method named '{}' is not allowed to be called remotely.".format(attrName))
         
@@ -141,14 +144,15 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         return (self.host, self.port)
         
     def setCopyableState(self, state):
-        self._host, self._port = state
+        host, self._port = state
+        self._host = IPv4Address(host)
     
     @property
     def host(self):
         if self._host is None:
             raise AttributeError(("host is None! When manually instanciating a NodeReference, "
                                     "both host and port have to be passed to the constructor."))
-        return self._host
+        return str(self._host)
     
     @property
     def port(self):
@@ -161,6 +165,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     def remote(self):
         """
         A (maybe deferred) pb.Reference to the corresponding remote node.
+        Will be ``None``, if called on a pseudo NodeReference.
         """
         if self._remoteReference is None:
             if (self.host, self.port) in self._remoteReferenceDict:
@@ -192,6 +197,92 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
 
 pb.setUnjellyableForClass('vaud.core.NodeReference', NodeReference)
 
+class PseudoNodeReference(NodeReference):
+    """
+    A NodeReference subclass that can be initialized with "lowest" or "highest"
+    as the only parameter and serves only for comparison purposes.
+    Its instances do not represent remote nodes. Thus, remote will return
+    ``None`` and remote calls will fail.
+    Note: Both host and port will return fake values!
+    """
+
+    def __init__(self, value):
+        valueMapping = {"lowest": 0, "highest": 1}
+        if value not in valueMapping:
+            raise ValueError(("Only 'lowest' or 'highest' are allowed for initializing a PseudoNodeReference. "
+                                "'{}' given.").format(value))
+        
+        self._value = valueMapping[value]
+    
+    def __lt__(self, other):
+        if not isinstance(other, NodeReference):
+            raise NotImplementedError()
+        if isinstance(other, PseudoNodeReference):
+            return self._value < other._value
+        return self._value == 0 # true if self is "lowest"
+    
+    def __le__(self, other):
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __eq__(self, other):
+        if not isinstance(other, NodeReference):
+            raise NotImplementedError()
+        return isinstance(PseudoNodeReference, other) and other.value == self.value
+    
+    def __ge__(self, other):
+        return self.__gt__(other) or self.__eq__(other)
+    
+    def __gt__(self, other):
+        if not isinstance(other, NodeReference):
+            raise NotImplementedError()
+        if isinstance(other, PseudoNodeReference):
+            return self._value > other._value
+        return self._value == 1 # true if self is "highest"
+    
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __getattr__(self, attrName: str):
+        if self._pseudoValue is not None:
+            raise AttributeError(("'{}' PseudoNodeReference has no such member: '{}'. As a pseudo NodeReference, "
+                                    "it can not call the method remotely.").format(self._value, attrName))
+    
+    def getStateToCopy(self):
+        return (self.host, self.port)
+        
+    def setCopyableState(self, state):
+        host, self._port = state
+        self._host = IPv4Address(host)
+    
+    @property
+    def host(self):
+        """
+        A fake IP address: Either 0.0.0.0 or 255.255.255.255.
+        """
+        if self._value == 0:
+            return "0.0.0.0"
+        return "255.255.255.255"
+        
+
+    @property
+    def port(self):
+        return 0
+    
+    @property
+    def value(self) -> str:
+        """
+        Returns either "lowest" or "highest".
+        """
+        if self._value == 0:
+            return "lowest"
+        return "highest"
+    
+    @property
+    def remote(self):
+        """
+        None, as this instance is a PseudoNodeReference that does not reference a remote node.
+        """
+        return None
 
 def remoteMethod(constantReturnValue = False):
     """
