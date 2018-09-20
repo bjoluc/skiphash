@@ -35,38 +35,6 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
 
 pb.setUnjellyableForClass('vaud.core.CopyableBitArray', CopyableBitArray)
 
-class NodeFactory:
-    """
-    A factory for Node objects. Only run one NodeFactory instance at a time!
-    If localNodeRegistry is not set to false, the factory will create a
-    publically accessible dictionary and add its Node instances there,
-    indexed by their ports.
-    """
-
-    def __init__(self, startPort: int, localNodeRegistry: bool = True):
-        self._nextPort = startPort
-        self.hasRegistry = localNodeRegistry
-
-        if localNodeRegistry:
-            self.registry = {}
-
-    def newNode(self):
-        # get new port
-        port = self._nextPort
-        self._nextPort += 1
-        node = Node(port)
-        if self.hasRegistry:
-            self._registry[port] = node
-        self.afterCreation(node)
-        return node
-    
-    def afterCreation(self, node: "Node"):
-        """
-        Will be called after a node has been created,
-        providing the new node instance.
-        Use this in your subclasses.
-        """
-
 class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     """
     A NodeReference stores a host (IPv4Address, provided as string) and a port (int) of a distant node
@@ -189,7 +157,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         return self._remoteReference
         
     def _failedGettingRemoteReference(self, reason):
-        logger.warn("Error retrieving remote node: %s", reason)
+        logger.warn("Error getting remote node reference: %s", reason)
         self._remoteReference = None
         self._remoteReferenceDict[self.host, self.port] = None
         return reason # pass reason to next callback
@@ -314,6 +282,7 @@ class Node(pb.Root):
     A local node that offers methods for both local and remote callers.
     In order to make a method callable by a remote caller, it has to be
     decorated with the @remoteMethod decorator.
+    Note: Do not initialize nodes yourself, use a NodeFactory for that!
     """
 
     def __init__(self, port: int, timeoutInterval: int = 10):
@@ -352,5 +321,41 @@ class Node(pb.Root):
     def timeout(self):
         """
         A periodically called method.
+        The time interval is set at construction.
         """
-        
+
+class NodeFactory:
+    """
+    A factory for Node objects. Only run one NodeFactory instance at a time!
+    The factory will create a publically accessible dictionary named `registry`
+    and add its Node instances there, indexed by their ports.
+    Also, all node instances created will be accessible via the factory's
+    localNodes attribute.
+    When subclassing, you can override the initNode() method to gain control
+    of node initialization.
+    """
+
+    def __init__(self, startPort: int):
+        self._startPort = startPort
+        self._nextPort = startPort
+        self.registry = {}
+        self.nodes = []
+
+    def newNode(self):
+        # get new port
+        port = self._nextPort
+        self._nextPort += 1
+        node = self._initNode(port, port == self._startPort)
+        self.registry[port] = node
+        self.nodes.append(node)
+        return node
+    
+    def shutdown(self) -> defer.Deferred:
+        deferreds = []
+        for n in self.nodes:
+            deferreds.append(n.shutdown())
+        return defer.gatherResults(deferreds)
+    
+    def _initNode(self, port: int, isFirstNode: bool):
+        """Override this to control node initialization."""
+        return Node(port)

@@ -21,15 +21,13 @@ def nodes(caplog, mocker):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
     caplog.set_level(logging.DEBUG, logger='twisted')
 
-    factory = NodeFactory(30000, localNodeRegistry=False)
-    nodes = [factory.newNode() for _ in range(3)]
+    factory = NodeFactory(30000)
+    for _ in range(3):
+        factory.newNode()
 
-    yield nodes
+    yield factory.nodes
 
-    deferreds = []
-    for n in nodes:
-        deferreds.append(n.shutdown())
-    return pytest_twisted.blockon(defer.gatherResults(deferreds))
+    return pytest_twisted.blockon(factory.shutdown())
 
 @pytest_twisted.inlineCallbacks
 def test_remote_interaction(caplog, mocker, nodes):
