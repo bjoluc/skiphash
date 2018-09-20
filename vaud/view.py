@@ -192,14 +192,19 @@ class DrawElements:
         self.cr.set_source_rgb(*EDGE_CURVED_COLOR)
         #set line thickness
         self.cr.set_line_width (self.curvedEdgeThickness)
+        # calculate positions
         x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
         x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
         yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
 
         control1X = x1Pos+self.curvedEdgeControlPointWidth
         control2X = x2Pos-self.curvedEdgeControlPointWidth
-        controlY = yPos+self.curvedEdgeControlPointHeight
+        if (node2XPos-node1XPos)%2 == 0: #alternate between even and odd distances
+            controlY = yPos+self.curvedEdgeControlPointHeight
+        else:
+            controlY = yPos-self.curvedEdgeControlPointHeight
 
+        # draw
         self.cr.move_to(x1Pos,yPos)
         self.cr.curve_to(control1X,controlY,  control2X,controlY,  x2Pos,yPos)
         self.cr.stroke()
@@ -265,6 +270,29 @@ class DrawElements:
 
                 yPos = yPos + self.rsLayerDistance
 
+    def placeNode(self) ->None:
+        # find i-layer
+        # find rs-layer
+        # find horizontal position
+        # find name
+        # call drawNodeAndIdText
+        pass
+
+    def connectNodes(self) ->None:
+        # find i-layers
+        # find rs-layers
+        # find horizontal positions
+        # find out if you need to draw a horizontal, diagonal, or curved edge
+        pass
+
+    def groupNodes(self) ->None:
+        # find i-layer
+        # find rs-layer
+        # find lowest horizontal position
+        # find highest horizontal position
+        # call drawCliqueGrouping
+        pass
+
     def drawSkipPlusGraph(self, widget, cr):
 
         self.cr = cr
@@ -308,7 +336,11 @@ class DrawElements:
         self.drawCurvedEdge(3,7,0,0)
         self.drawCurvedEdge(3,6,0,0)
         self.drawCurvedEdge(3,5,0,0)
+
         self.drawCurvedEdge(3,5,0,1)
+        self.drawCurvedEdge(4,6,0,1)
+        self.drawCurvedEdge(4,7,0,1)
+        self.drawCurvedEdge(4,8,0,1)
                 
         # place nodes and id texts
         for x in range(self.amountNodes): #iterate over the horizontal nodes    
