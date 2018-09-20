@@ -8,6 +8,7 @@ NODE_COLOR_EVEN_RS = (0.266, 0.623, 0.835) #(0.407, 0.427, 0.650)
 NODE_COLOR_ODD_RS = (0.678, 0.729, 0.760) #(0.407, 0.427, 0.650)
 EDGE_DIAGONAL_COLOR = (0.423, 0.278, 0.341) #(0.090, 0.101, 0.250)
 EDGE_HORIZONTAL_COLOR = (0.772, 0.125, 0.415) #(0.090, 0.101, 0.250)
+EDGE_CURVED_COLOR = (0.658, 0.243, 0.376) #(0.090, 0.101, 0.250)
 CLIQUE_GROUPING_COLOR = (0.250, 0.250, 0.250)
 TEXT_COLOR = (0.858, 0.858, 0.858) # (0.121, 0.121, 0.121)
 CONNECTION_LINES_COLOR = (0.368, 0.368, 0.368)
@@ -20,6 +21,7 @@ LAYER_TEXT_FONT = "Georgia"
 #positioning and size constants
 RELATIVE_DISTANCE_NODES_HORIZONTAL = 3 #how many nodes should fit between two nodes horizontally
 RELATIVE_MINIMUM_NODE_SIZE = 0.013 #defines how large a node must be at the minimum relative to the screen width
+RELATIVE_MAXIMUM_NODE_SIZE = 0.03 #defines how large a node must be at the maximum relative to the screen width
 
 RELATIVE_TEXT_WIDTH_TO_SCREEN = 1/15.0 #defines the width of the longest text on the left side
 RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT = 0.5 #defines the empty space width left and right to the left column text relative to that text
@@ -37,6 +39,10 @@ RELATIVE_CORNER_RADIUS_OF_CLIQUES_TO_HEIGHT = 0.2 #defines the corner radius of 
 
 RELATIVE_HORIZONTAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.3 #defines how thick an horizontal edge is relative to the node size
 RELATIVE_DIAGONAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.2 #defines how thick an diagonal edge is relative to the node size
+RELATIVE_CURVED_EDGE_THICKNESS_TO_NODE_SIZE = 0.08 #defines how thick an curved edge is relative to the node size
+
+RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE = 0.7 #defines the height a curved edge can take in relation to the rs layer distance
+RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT = 0.1 #defines how far away in horizontal direction the control points will be placed for a curved edge in relation to the height of the control point. Lower values (also <0) make the curve harsher
 
 class DrawElements:
 
@@ -48,7 +54,8 @@ class DrawElements:
         # how large is a node
         self.nodeSize = (self.screenWidth - ((4*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +2) *RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth)) / (self.amountNodes + ((self.amountNodes -1) * RELATIVE_DISTANCE_NODES_HORIZONTAL))
         self.nodeSize = max(RELATIVE_MINIMUM_NODE_SIZE*self.screenWidth, self.nodeSize)
-        print("self.nodeSize: " + str(self.nodeSize))
+        self.nodeSize = min(RELATIVE_MAXIMUM_NODE_SIZE*self.screenWidth, self.nodeSize)
+        #print("self.nodeSize: " + str(self.nodeSize))
         # how wide is the horizontal distance between nodes
         self.distanceNodesHorizontal = (RELATIVE_DISTANCE_NODES_HORIZONTAL+1)*self.nodeSize
         # how tall is an rs layer
@@ -58,6 +65,10 @@ class DrawElements:
         # how thick is an edge
         self.horizontalEdgeThickness = RELATIVE_HORIZONTAL_EDGE_THICKNESS_TO_NODE_SIZE*self.nodeSize
         self.diagonalEdgeThickness = RELATIVE_DIAGONAL_EDGE_THICKNESS_TO_NODE_SIZE*self.nodeSize
+        self.curvedEdgeThickness = RELATIVE_CURVED_EDGE_THICKNESS_TO_NODE_SIZE*self.nodeSize
+        # how high and wide will the control points be set for a curved edge
+        self.curvedEdgeControlPointHeight = RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE*self.rsLayerDistance *4.0/3.0
+        self.curvedEdgeControlPointWidth = RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT * self.curvedEdgeControlPointHeight
         # how thick is the vertical dotted connection line
         # how large is a clique grouping
         self.cliqueDistanceSide = RELATIVE_CLIQUE_DISTANCE_SIDE*self.nodeSize
@@ -75,9 +86,9 @@ class DrawElements:
         self.idTextFontSize = self.calculateFontSizeToFitWidth(ID_TEXT_FONT, self.widthOfIdText, self.idLength)  
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
-        print("self.canvasWidth " + str(self.canvasWidth))
+        #print("self.canvasWidth " + str(self.canvasWidth))
         self.canvasHeight = self.calculateVerticalPositionOfNode(self.idLength-1, int(math.pow(2,self.idLength)))
-        print("self.canvasHeight " + str(self.canvasHeight))
+        #print("self.canvasHeight " + str(self.canvasHeight))
         
 
     def calculateFontSizeToFitWidth (self, fontface: str, allowedWidth: float, maxTextLength: int) -> int:
@@ -176,6 +187,31 @@ class DrawElements:
         self.cr.line_to(x2Pos,y2Pos)
         self.cr.stroke()
 
+    def drawCurvedEdge(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
+        #set color
+        self.cr.set_source_rgb(*EDGE_CURVED_COLOR)
+        #set line thickness
+        self.cr.set_line_width (self.curvedEdgeThickness)
+        x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
+        x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
+        yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
+
+        control1X = x1Pos+self.curvedEdgeControlPointWidth
+        control2X = x2Pos-self.curvedEdgeControlPointWidth
+        controlY = yPos+self.curvedEdgeControlPointHeight
+
+        self.cr.move_to(x1Pos,yPos)
+        self.cr.curve_to(control1X,controlY,  control2X,controlY,  x2Pos,yPos)
+        self.cr.stroke()
+        '''
+        height = 3/4 *(yPos+self.curvedEdgeControlPointHeight) + 1/4 *(yPos)
+        self.cr.move_to(x1Pos,height)
+        self.cr.line_to(x2Pos,height)
+        self.cr.stroke()
+
+        #3/4 Ymax + 1/4 Ymin
+        '''
+
     def drawNodeAndIdText(self, nodeXPos: int, iLayer: int, rsLayer: int, idText: str) -> None:
         #calculate position for node
         xPos = self.calculateHorizontalPositionOfNode(nodeXPos)
@@ -235,7 +271,7 @@ class DrawElements:
         self.widget = widget
 
         # get id length
-        self.idLength = 5
+        self.idLength = 4
         # get amount of nodes
         self.amountNodes = int(math.pow(2,self.idLength))
         # calculate sizes for individual elements
@@ -266,6 +302,13 @@ class DrawElements:
         # draw diagonal edges
         self.drawDiagonalEdge(5,8,0,0,0,1)
         self.drawDiagonalEdge(5,8,0,1,1,0)
+
+        # draw curved edges
+        self.drawCurvedEdge(3,8,0,0)
+        self.drawCurvedEdge(3,7,0,0)
+        self.drawCurvedEdge(3,6,0,0)
+        self.drawCurvedEdge(3,5,0,0)
+        self.drawCurvedEdge(3,5,0,1)
                 
         # place nodes and id texts
         for x in range(self.amountNodes): #iterate over the horizontal nodes    
@@ -344,7 +387,7 @@ class PyApp(Gtk.Window):
         # Then get the geometry of that monitor
         self.monitor = self.screen.get_monitor_geometry(self.m)
         # This is an example output
-        print("Height: %s, Width: %s" % (self.monitor.height, self.monitor.width))
+        #print("Height: %s, Width: %s" % (self.monitor.height, self.monitor.width))
         self.screenWidth = self.monitor.width
         self.screenHeight = self.monitor.height
         self.set_title("Skip+ Graph")
