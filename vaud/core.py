@@ -1,10 +1,12 @@
 import logging
 import random
+import sys
+from ipaddress import IPv4Address
+from typing import Any, Union
 
 from bitarray import bitarray
-from ipaddress import IPv4Address
 from twisted.application.internet import TimerService
-from twisted.internet import defer, reactor
+from twisted.internet import defer, error, reactor
 from twisted.spread import flavors, pb
 
 from vaud import thisHost
@@ -13,6 +15,39 @@ logger = logging.getLogger(__name__)
 
 # For twisted reactor method calls:
 # pylint: disable=maybe-no-member
+
+def sleep(seconds: int):
+    """Returns a deferred that fires after the time given has passed."""
+    d = defer.Deferred()
+    reactor.callLater(seconds, d.callback, None)
+    return d
+
+def eprint(*args, **kwargs):
+    """Print to stderr"""
+    print(*args, file=sys.stderr, **kwargs)
+
+def linkedDeferred(d: Union[defer.Deferred, Any]):
+    """
+    When yielding the same deferred from multiple inlineCallbacks-decorated
+    methods, only one of those methods will get the deferred's value.
+    If you still want to receive the value you can use this function,
+    providing your deferred (or value). It will return another deferred that will be
+    called with the same value as the initial deferred (or just the input value).
+    Each generator can thus yield another deferred (the results of this function's calls)
+    while still getting the same value.
+    I don't like that this cheat is needed in Twisted!
+    """
+    if isinstance(d, defer.Deferred):
+        newDeferred = defer.Deferred()
+        def callback(value):
+            newDeferred.callback(value)
+            return value
+        def errback(value):
+            newDeferred.errback(value)
+            return value
+        d.addCallbacks(callback, errback)
+        return newDeferred
+    return d
 
 def randomBitArray(byteSize):
     byteString = bytes(random.getrandbits(8) for _ in range(byteSize))
@@ -51,8 +86,13 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         if host is not None:
             self._host = IPv4Address(host)
         self._port = port
+        self.postInit()
+        # CAUTION: For some reasons, this is not called when
+        # the object is copied by the perspective broker.
+        # Use postInit() instead.
+    
+    def postInit(self):
         self._remoteReference = None
-        self._cache = {}
     
     def __lt__(self, other):
         if not isinstance(other, NodeReference):
@@ -89,25 +129,38 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         """
 
         if attrName not in remoteMethod.methodNames:
-            raise AttributeError("A method named '{}' is not allowed to be called remotely.".format(attrName))
-        
-        cacheable = attrName in remoteMethod.constantReturnValueMethodNames
-        if cacheable and attrName in self._cache:
-            return self._cache[attrName]
+            raise AttributeError(("No such member: '{}'. Additionally, a method with that name "
+                                    "is not allowed to be called remotely.").format(attrName))
        
         # create a wrapper for executing the remote call
         @defer.inlineCallbacks
         def remoteCallWrapper(*args, **kwargs):
-            remote = yield self.remote
+            # try to get the RemoteReference (might be None)
+            try:
+                remote = yield self.remote
+            except error.ConnectError as err:
+                logger.warn(("{}: Remote method call '{}' currently "
+                                "cannot be executed: {}").format(self, attrName, err))
+                return
+            if remote is None:
+                logger.warn(("{}: Remote method call '{}' currently cannot be executed: "
+                                "No connection to remote host.").format(self, attrName))
+                return
+            # make the remote call
             deferred = remote.callRemote(attrName, *args, **kwargs)
-            if cacheable:
-                self._cache[attrName] = deferred
-            returnValue = yield deferred
-            if cacheable:
-                self._cache[attrName] = returnValue
-            return returnValue
+            try:
+                returnValue = yield deferred
+                return returnValue
+            except (pb.RemoteError, pb.PBConnectionLost) as err:
+                logger.warn("%s: Remote call '%s' failed: %s", self, attrName, err)
         
         return remoteCallWrapper
+    
+    def __hash__(self):
+        return hash(self.id)
+    
+    def __str__(self):
+        return "NodeReference({},{})".format(self.host, self.port)
     
     def getStateToCopy(self):
         return (self.host, self.port)
@@ -115,6 +168,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     def setCopyableState(self, state):
         host, self._port = state
         self._host = IPv4Address(host)
+        self.postInit()
     
     @property
     def host(self):
@@ -132,13 +186,12 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     
     @property
     def id(self):
-        return "{s}:{d}".format(self.host, self.port)
+        return "{}:{}".format(self.host, self.port)
     
     @property
     def remote(self):
         """
         A (maybe deferred) pb.Reference to the corresponding remote node.
-        Will be ``None``, if called on a pseudo NodeReference.
         """
         if self._remoteReference is None:
             if (self.host, self.port) in self._remoteReferenceDict:
@@ -146,7 +199,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
                 self._remoteReference = self._remoteReferenceDict[self.host, self.port]
             else:
                 # RemoteReference does not yet exist on this host
-                logger.info("Requesting remote node reference from %s:%d", self.host, self.port)
+                logger.info("%s: Requesting remote reference from %s:%d", self, self.host, self.port)
                 factory = pb.PBClientFactory()
                 reactor.connectTCP(self.host, self.port, factory)
                 deferred = factory.getRootObject()
@@ -154,16 +207,16 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
                 self._remoteReference = deferred
                 self._remoteReferenceDict[self.host, self.port] = deferred
 
-        return self._remoteReference
+        return linkedDeferred(self._remoteReference) # for simultaneous use in multiple generators
         
     def _failedGettingRemoteReference(self, reason):
-        logger.warn("Error getting remote node reference: %s", reason)
+        logger.warn("%s: Error getting remote node reference: %s", self, reason)
         self._remoteReference = None
         self._remoteReferenceDict[self.host, self.port] = None
         return reason # pass reason to next callback
     
-    def _gotRemoteReference(self, instance: flavors.Referenceable):
-        logger.info("Got remote node reference %s", instance)
+    def _gotRemoteReference(self, instance: pb.RemoteReference):
+        logger.info("%s: Got remote node reference %s", self, instance)
         self._remoteReference = instance
         self._remoteReferenceDict[self.host, self.port] = instance
         return instance # pass reference on to the next callback
@@ -216,9 +269,8 @@ class PseudoNodeReference(NodeReference):
         return not self.__eq__(other)
 
     def __getattr__(self, attrName: str):
-        if self._pseudoValue is not None:
-            raise AttributeError(("'{}' PseudoNodeReference has no such member: '{}'. As a pseudo NodeReference, "
-                                    "it can not call the method remotely.").format(self._value, attrName))
+        raise AttributeError(("'{}' PseudoNodeReference has no such member: '{}'. As a pseudo NodeReference, "
+                                "it can not call the method remotely.").format(self._value, attrName))
     
     def getStateToCopy(self):
         return (self.host, self.port)
@@ -257,25 +309,16 @@ class PseudoNodeReference(NodeReference):
         """
         return None
 
-def remoteMethod(constantReturnValue = False):
+def remoteMethod(method):
     """
-    A decorator factory allowing methods to be called remotely.
+    A decorator allowing methods to be called remotely.
     It also maintains a set of names of the methods it has been used for.
-    If constantReturnValue is set to true, a NodeReference will only call
-    the remote method once, cache the result and further use the cached result.
     """
-    def decorator(method):
-        method.is_remote_method = True
-        methodName = method.__name__
-        remoteMethod.methodNames.add(methodName)
-        if constantReturnValue:
-            remoteMethod.constantReturnValueMethodNames.add(methodName)
-        return method
-    
-    return decorator
+    method.is_remote_method = True
+    remoteMethod.methodNames.add(method.__name__)
+    return method
 
 remoteMethod.methodNames = set()
-remoteMethod.constantReturnValueMethodNames = set()
     
 class Node(pb.Root):
     """
@@ -285,10 +328,18 @@ class Node(pb.Root):
     Note: Do not initialize nodes yourself, use a NodeFactory for that!
     """
 
-    def __init__(self, port: int, timeoutInterval: int = 10):
+    def __init__(self, port: int, timeoutInterval: int = 1):
         self.reference = NodeReference(thisHost, port)
         self._portObject = reactor.listenTCP(port, pb.PBServerFactory(self))
-        self._timer = TimerService(timeoutInterval, self.timeout)
+        
+        # Creating a twisted TimerService to call the timeout method periodically
+        # Cheat to not call timeout right away (self is probably not ready now)
+        def timeoutRunner():
+            if timeoutRunner.counter != 0:
+                self.timeout()
+            timeoutRunner.counter += 1
+        timeoutRunner.counter = 0
+        self._timer = TimerService(timeoutInterval, timeoutRunner)
         self._timer.startService()
     
     def __getattr__(self, attrName: str):
@@ -305,8 +356,11 @@ class Node(pb.Root):
             # the requested method may be called remotely
             return getattr(self, suffix)
         
-        # delegating the lookup to object for all other requests
-        return object.__getattr__(self, attrName)
+        # raising an attribute error for all other requests
+        raise AttributeError("No such member: '{}'".format(attrName))
+    
+    def __str__(self):
+        return "Node({}:{})".format(self.reference.host, self.reference.port)
 
     @defer.inlineCallbacks
     def shutdown(self):

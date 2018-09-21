@@ -1,8 +1,13 @@
-from bitarray import bitarray
+import logging
 from typing import Set
-from vaud.core import CopyableBitArray, Node, NodeReference, remoteMethod, randomBitArray, PseudoNodeReference
+
+from bitarray import bitarray
 from twisted.internet import defer
 from twisted.spread import pb
+
+from vaud.core import (CopyableBitArray, Node, NodeFactory, NodeReference,
+                       PseudoNodeReference, eprint, randomBitArray,
+                       remoteMethod)
 
 # Define the length of the rs bit string
 RS_BYTE_LENGTH = 2
@@ -10,6 +15,8 @@ RS_BIT_LENGTH = RS_BYTE_LENGTH * 8
 
 lowest = PseudoNodeReference("lowest")
 highest = PseudoNodeReference("highest")
+
+logger = logging.getLogger(__name__)
 
 class SkipNodeReference(NodeReference):
     """
@@ -24,7 +31,7 @@ class SkipNodeReference(NodeReference):
         return (super(SkipNodeReference, self).getStateToCopy(), self.rs)
         
     def setCopyableState(self, state):
-        superState, self.rs = state
+        superState, self._rs = state
         super(SkipNodeReference, self).setCopyableState(superState)
     
     @property
@@ -34,11 +41,11 @@ class SkipNodeReference(NodeReference):
                                     "rs has to be passed to the constructor."))
         return self._rs
     
-    @property.setter('rs')
-    def setRs(self, rs: CopyableBitArray):
+    @rs.setter
+    def rs(self, rs: CopyableBitArray):
         self._rs = rs
 
-pb.setUnjellyableForClass('vaud.core.SkipNodeReference', SkipNodeReference)
+pb.setUnjellyableForClass('vaud.skip.SkipNodeReference', SkipNodeReference)
 
 # general skip helper functions
 
@@ -53,15 +60,17 @@ def pred(v: SkipNodeReference, W: Set[SkipNodeReference]) -> SkipNodeReference:
     """
     pred(v, w) = arg max (w∈W ∪ {lowest}) {w < v}
     """
-    return max([w for w in W if w < v].append(lowest))
+    return max([w for w in W if w < v] + [lowest])
 
 def succ(v: SkipNodeReference, W: Set[SkipNodeReference]) -> SkipNodeReference:
     """
     succ(v, W) = arg min (w∈W ∪ {highest}) {w > v}
     """
-    return min([w for w in W if w > v].append(highest))
+    if len(W) == 0:
+        W = []
+    return min([w for w in W if w > v] + [highest])
 
-def _levelNodes(i: int, v: SkipNodeReference, x: bool, N: Set[SkipNodeReference]) -> Set(SkipNodeReference):
+def _levelNodes(i: int, v: SkipNodeReference, x: bool, N: Set[SkipNodeReference]) -> Set[SkipNodeReference]:
     """
     Returns {w ∈ N | prefix(i+1, w) = prefix(i, v)◦x}
     """
@@ -131,13 +140,15 @@ class SkipNode(Node):
         # replacing the super constructor's NodeReference by a SkipNodeReference
         self.reference = SkipNodeReference(self.reference.host, port, self._rs)
         self.N = set() # outgoing neighborhood
-        self._ranges = {} # range for each level i < RS_BIT_LENGTH - 1
+
+        # range for each level i < RS_BIT_LENGTH - 1
+        self._ranges = dict((i, set()) for i in range(RS_BIT_LENGTH-1)) 
 
         # a set of all nodes (SkipNodeReferences) that are currently
         # in at least one of this node's ranges
         self._nodesInRanges = set()
     
-    @remoteMethod(constantReturnValue=True)
+    @remoteMethod
     def rs(self):
         """
         The node's random bit string. For connecting a new node only.
@@ -197,13 +208,58 @@ class SkipNode(Node):
     
     @remoteMethod
     def linearise(self, u: SkipNodeReference):
+        logger.debug("%s.linearise(%s) is called.", self, u)
         # See Chapter 5, Slide 171
         if u != self.reference and u not in self.N:
             self.N.add(u)
             self.updateRanges()
-            undesirableNodes = self.N.difference(self._nodesInRanges) # nodes that are not in any range now
-            self.N = self._nodesInRanges # only keep the relevant nodes in our neighborhood
-            # delegate the undesirable nodes
-            for w in undesirableNodes:
-                delegationDestination = longestCommonPrefixNode(w, self.N)
-                delegationDestination.linearise(w)
+            if len(self._nodesInRanges) == 0:
+                # There are no nodes in our ranges.
+                # Let's better keep our current neighbors instead of destroying the connectedness!
+                # TODO: May we do this?
+                pass
+            else:
+                undesirableNodes = self.N.difference(self._nodesInRanges) # nodes that are not in any range now
+                self.N = self._nodesInRanges # only keep the skip+ neighbors in our neighborhood
+                # delegate the undesirable nodes
+                for w in undesirableNodes:
+                    delegationDestination = longestCommonPrefixNode(w, self.N)
+                    delegationDestination.linearise(w)
+
+
+class SkipNodeFactory(NodeFactory):
+    """
+    A NodeFactory for SkipNodes.
+    The node that was previously created will be introduced
+    to the next node that will be created.
+    If entryNodeHost and entryNodePort are specified, the specified
+    remote node will be introduced to the first node that will be created.
+    """
+    def __init__(self, startPort: int, entryNodeHost: str = None, entryNodePort: int = None):
+        super(SkipNodeFactory, self).__init__(startPort)
+        self._entryNodeHost = entryNodeHost
+        self._entryNodePort = entryNodePort
+        self.entryNodeReference = None # if configured, will store the SkipNodeReference, once the rs value has arrived
+        if entryNodeHost is not None and entryNodePort is not None:
+            # create a NodeReference to ask the entry node for its random bit string
+            entryNodeReference = NodeReference(entryNodeHost, entryNodePort)
+            deferredRs = entryNodeReference.rs() # request random bit string
+            deferredRs.addCallbacks(self._gotEntryNodeRs, self._failedGettingEntryNodeRs)
+    
+    def _gotEntryNodeRs(self, rs: CopyableBitArray):
+        self.entryNodeReference = SkipNodeReference(self._entryNodeHost, self._entryNodePort, rs)
+        if len(self.nodes) > 0:
+            self.nodes[0].introduce(self.entryNodeReference)
+    
+    def _failedGettingEntryNodeRs(self, reason: str):
+        logger.warn("Failed to get the entry node's random bit string! This host will not be connected to any other host.")
+    
+    def _initNode(self, port: int, isFirstNode: bool):
+        node = SkipNode(port)
+        if isFirstNode:
+            if self.entryNodeReference is not None:
+                node.linearise(self.entryNodeReference)
+        else:
+            node.linearise(self.nodes[-1].reference)
+            
+        return node

@@ -16,7 +16,7 @@ observer.start()
 
 # pylint: disable=maybe-no-member
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def nodes(caplog, mocker):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
     caplog.set_level(logging.DEBUG, logger='twisted')
