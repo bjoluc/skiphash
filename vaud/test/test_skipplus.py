@@ -11,7 +11,7 @@ from twisted.python import log
 from vaud import thisHost
 from vaud.core import (CopyableBitArray, Node, NodeFactory, NodeReference,
                        randomBitArray, remoteMethod, sleep)
-from vaud.skip import SkipNode, SkipNodeFactory, SkipNodeReference
+from vaud.skipplus import SkipNode, SkipNodeFactory, SkipNodeReference
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -22,14 +22,15 @@ observer.start()
 def test_local_graph(caplog, mocker):
     caplog.set_level(logging.DEBUG, logger='vaud.core')
     caplog.set_level(logging.DEBUG, logger='vaud.skip')
+    
+    # This test does not check for correctness!
+    # It only tries to run some skip+ nodes ;)
 
     factory = SkipNodeFactory(33000)
 
     for _ in range(10):
         factory.newNode()
     
-    yield sleep(40)
+    yield sleep(5)
 
     yield factory.shutdown()
-
-    assert 0

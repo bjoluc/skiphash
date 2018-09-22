@@ -45,7 +45,7 @@ class SkipNodeReference(NodeReference):
     def rs(self, rs: CopyableBitArray):
         self._rs = rs
 
-pb.setUnjellyableForClass('vaud.skip.SkipNodeReference', SkipNodeReference)
+pb.setUnjellyableForClass('vaud.skipplus.SkipNodeReference', SkipNodeReference)
 
 # general skip helper functions
 
@@ -142,11 +142,11 @@ class SkipNode(Node):
         self.N = set() # outgoing neighborhood
 
         # range for each level i < RS_BIT_LENGTH - 1
-        self._ranges = dict((i, set()) for i in range(RS_BIT_LENGTH-1)) 
+        self.ranges = dict((i, set()) for i in range(RS_BIT_LENGTH-1)) 
 
         # a set of all nodes (SkipNodeReferences) that are currently
         # in at least one of this node's ranges
-        self._nodesInRanges = set()
+        self.nodesInRanges = set()
     
     @remoteMethod
     def rs(self):
@@ -163,9 +163,9 @@ class SkipNode(Node):
         nodesInRanges = set()
         for i in range(RS_BIT_LENGTH-1):
             currentLevelRange = skipRange(i, self.reference, self.N)
-            self._ranges[i] = currentLevelRange
+            self.ranges[i] = currentLevelRange
             nodesInRanges.union(currentLevelRange)
-        self._nodesInRanges = nodesInRanges
+        self.nodesInRanges = nodesInRanges
     
     def timeout(self):
         # See Chapter 5, Slide 169 f.
@@ -173,7 +173,7 @@ class SkipNode(Node):
             # partition range of level i by left and right nodes
             leftRange = []
             rightRange = []
-            for x in self._ranges[i]:
+            for x in self.ranges[i]:
                 if x < self.reference:
                     leftRange.append(x)
                 if x > self.reference:
@@ -213,14 +213,14 @@ class SkipNode(Node):
         if u != self.reference and u not in self.N:
             self.N.add(u)
             self.updateRanges()
-            if len(self._nodesInRanges) == 0:
+            if len(self.nodesInRanges) == 0:
                 # There are no nodes in our ranges.
                 # Let's better keep our current neighbors instead of destroying the connectedness!
                 # TODO: May we do this?
                 pass
             else:
-                undesirableNodes = self.N.difference(self._nodesInRanges) # nodes that are not in any range now
-                self.N = self._nodesInRanges # only keep the skip+ neighbors in our neighborhood
+                undesirableNodes = self.N.difference(self.nodesInRanges) # nodes that are not in any range now
+                self.N = self.nodesInRanges # only keep the skip+ neighbors in our neighborhood
                 # delegate the undesirable nodes
                 for w in undesirableNodes:
                     delegationDestination = longestCommonPrefixNode(w, self.N)

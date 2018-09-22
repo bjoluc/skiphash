@@ -151,7 +151,9 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
             try:
                 returnValue = yield deferred
                 return returnValue
-            except (pb.RemoteError, pb.PBConnectionLost) as err:
+            except pb.PBConnectionLost as err:
+                logger.warn("%s: Remote call '%s' failed: Connection to remote node lost.", self, attrName)
+            except pb.RemoteError as err:
                 logger.warn("%s: Remote call '%s' failed: %s", self, attrName, err)
         
         return remoteCallWrapper
@@ -361,6 +363,18 @@ class Node(pb.Root):
     
     def __str__(self):
         return "Node({}:{})".format(self.reference.host, self.reference.port)
+    
+    @property
+    def host(self):
+        return self.reference.host
+    
+    @property
+    def port(self):
+        return self.reference.port
+    
+    @property
+    def id(self):
+        return self.reference.id
 
     @defer.inlineCallbacks
     def shutdown(self):
