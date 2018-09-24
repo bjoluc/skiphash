@@ -9,6 +9,7 @@ from twisted.application.internet import TimerService
 from twisted.internet import reactor
 
 from vaud.skipplus import SkipNode, SkipNodeFactory
+from vaud.view import Visualizer
 
 # For twisted reactor method calls:
 # pylint: disable=maybe-no-member
@@ -34,12 +35,13 @@ for _ in range(numNodes):
     factory.newNode()
 
 # Here we go - those are your nodes! ;)
-nodes = factory.nodes
+nodes = sorted(factory.nodes)
+#nodes = factory.nodes
 
 # Some examples:
 myNode = nodes[0]
 
-myNodeRs = SkipNode.rs # Subtype of https://pypi.org/project/bitarray/
+myNodeRs = myNode.rs # Subtype of https://pypi.org/project/bitarray/
 myNodeId = myNode.id # IP port tuple like "1.2.3.4:1234"
 # do not compare ids, compare references (myNode.reference)
 # if you need one of those
@@ -56,6 +58,12 @@ stableNeighbors = myNode.nodesInRanges
 level0Range = myNode.ranges[0] # set of NodeReferences in range 0
 
 # Lots of space for your stuff :P
+print("now my stuff starts")
+
+
+v = Visualizer(nodes)
+
+
 
 # ah, if you need a timer:
 def updateView():

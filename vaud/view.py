@@ -1,7 +1,8 @@
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk
 import cairo, math, random
+from gi.repository import Gtk
+from vaud.core import Node
 
 #color constants
 NODE_COLOR_EVEN_RS = (0.266, 0.623, 0.835) #(0.407, 0.427, 0.650)
@@ -26,7 +27,7 @@ RELATIVE_MAXIMUM_NODE_SIZE = 0.03 #defines how large a node must be at the maxim
 RELATIVE_TEXT_WIDTH_TO_SCREEN = 1/15.0 #defines the width of the longest text on the left side
 RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT = 0.5 #defines the empty space width left and right to the left column text relative to that text
 
-RELATIVE_WIDTH_OF_ID_TEXTS = 1.5 #defines how wide the id texts are in relation to the size of a node
+RELATIVE_WIDTH_OF_ID_TEXTS = 3 #defines how wide the id texts are in relation to the size of a node
 RELATIVE_OFFSET_OF_ID_TEXTS = 0.5 #defines how far below the id text will be placed below a node in relation to the size of a node
 
 RELATIVE_RS_LAYER_HEIGHT_TO_NODE_SIZE = 3.4 # defines the height of the rs layer as defined on S.167 relative to the node size. Unlike the slide, in this representation all rs layers will be quidistant in the same i layer
@@ -46,9 +47,10 @@ RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT = 0.1 #defines how far away in horizontal d
 
 class DrawElements:
 
-    def __init__(self, screenWidth, screenHeight):
+    def __init__(self, screenWidth, screenHeight, nodes: list):
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
+        self.nodes = nodes
 
     def calculateSizes(self) ->None:
         # how large is a node
@@ -159,6 +161,7 @@ class DrawElements:
         self.draw_rounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
         
     def drawHorizontalEdge(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
+        ''' draws a horizontal edge from node1XPos to node2XPos on the specified iLayer and rsLayer'''
         #set color
         self.cr.set_source_rgb(*EDGE_HORIZONTAL_COLOR)
         #set line thickness
@@ -172,7 +175,7 @@ class DrawElements:
         self.cr.stroke()
 
 
-    def drawDiagonalEdge(self, node1XPos: int, node2XPos: int, iLayerLower: int, iLayerUpper: int, rsLayerLower: int, rsLayerUpper: int) -> None:
+    def drawDiagonalEdge(self, node1XPos: int, node2XPos: int, iLayer1: int, iLayer2: int, rsLayer1: int, rsLayer2: int) -> None:
         #set color
         self.cr.set_source_rgb(*EDGE_DIAGONAL_COLOR)
         #set line thickness
@@ -180,8 +183,8 @@ class DrawElements:
         
         x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
         x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
-        y1Pos = self.calculateVerticalPositionOfNode(iLayerLower, rsLayerLower)
-        y2Pos = self.calculateVerticalPositionOfNode(iLayerUpper, rsLayerUpper)
+        y1Pos = self.calculateVerticalPositionOfNode(iLayer1, rsLayer1)
+        y2Pos = self.calculateVerticalPositionOfNode(iLayer2, rsLayer2)
 
         self.cr.move_to(x1Pos,y1Pos)
         self.cr.line_to(x2Pos,y2Pos)
@@ -270,22 +273,56 @@ class DrawElements:
 
                 yPos = yPos + self.rsLayerDistance
 
-    def placeNode(self) ->None:
-        # find i-layer
-        # find rs-layer
-        # find horizontal position
-        # find name
-        # call drawNodeAndIdText
-        pass
+    def calculateRsLayerOfNode (self, node:Node, iLayer: int) -> int:
+        return int(node.rs.to01()[:iLayer+1], 2)
 
-    def connectNodes(self) ->None:
-        # find i-layers
-        # find rs-layers
-        # find horizontal positions
-        # find out if you need to draw a horizontal, diagonal, or curved edge
-        pass
+    def calculateXPosOfNode (self, node:Node) -> int:
+        return self.nodes.index(node)
 
-    def groupNodes(self) ->None:
+    def checkForIntermediateNodes (self, nodeLeftIndex:int, nodeRightIndex:int, iLayer:int, rsLayer:int) -> bool:
+        for nodeIndex in range(nodeLeftIndex+1, nodeRightIndex-1):
+            if self.calculateRsLayerOfNode(self.nodes[nodeIndex], iLayer) == rsLayer:
+                # there is a node between left and right on the same rsLayer
+                return True
+        return False
+
+    def placeNode(self, node:Node, placementInNodes: int) ->None:
+        # for each i-layer
+        for iLayer in range(self.idLength-1):
+            # find rs
+            rsText = node.rs.to01()
+            #print("rsText: " + str(rsText))
+            # find rs-layer
+            rsLayer = self.calculateRsLayerOfNode(node, iLayer)
+            # call drawNodeAndIdText
+            self.drawNodeAndIdText(placementInNodes, iLayer, rsLayer, rsText)
+        
+
+    def connectNode(self, node:Node) ->None:
+        # for each i-layer
+        for iLayer in range(self.idLength-1):
+            for neighbor in node.ranges[iLayer]:
+                # find rs-layers
+                nodeRsLayer  = self.calculateRsLayerOfNode(node, iLayer)
+                neighborRsLayer = self.calculateRsLayerOfNode(neighbor, iLayer)
+                # find horizontal positions
+                nodeX = self.calculateXPosOfNode(node)
+                neighborX = self.calculateXPosOfNode(neighbor)
+                # find out if you need to draw a horizontal, diagonal, or curved edge
+                if nodeRsLayer != neighborRsLayer:
+                    #draw a diagonal edge
+                    self.drawDiagonalEdge(nodeX, neighborX, iLayer, iLayer, nodeRsLayer, neighborRsLayer)
+                elif self.checkForIntermediateNodes(nodeX,neighborX,iLayer,nodeRsLayer):
+                    #draw a curved edge
+                    self.drawCurvedEdge(nodeX, neighborX, iLayer, nodeRsLayer)
+                else:
+                    #draw a horizontal edge
+                    self.drawHorizontalEdge(nodeX, neighborX, iLayer, nodeRsLayer)
+
+    def groupNodes(self, nodes: list) ->None:
+        # find out which cliques exist
+
+
         # find i-layer
         # find rs-layer
         # find lowest horizontal position
@@ -293,24 +330,7 @@ class DrawElements:
         # call drawCliqueGrouping
         pass
 
-    def drawSkipPlusGraph(self, widget, cr):
-
-        self.cr = cr
-        self.widget = widget
-
-        # get id length
-        self.idLength = 4
-        # get amount of nodes
-        self.amountNodes = int(math.pow(2,self.idLength))
-        # calculate sizes for individual elements
-        self.calculateSizes()
-        # set the size request to make the drawing area scrollable
-        self.widget.set_size_request(self.canvasWidth,self.canvasHeight)
-
-        #paint background color
-        self.cr.set_source_rgb(*BACKGROUND_COLOR)
-        self.cr.paint()
-
+    def placeExamples(self):
         #place elements on canvas
         # place vertical connection lines - I deem them unnecessary as we already have the ids displayed and the vertical alignment is visible
         # place clique groupings
@@ -353,60 +373,36 @@ class DrawElements:
         # place layer markings for i layers and rs layers
         self.drawLayerMarkings()
 
-        return False
-        
-        
-    def draw_cb(self, widget, cr):
+    def drawSkipPlusGraph(self, widget, cr):
 
         self.cr = cr
         self.widget = widget
+
+        # get id length
+        self.idLength = 16
+        # get amount of nodes
+        self.amountNodes = 10#int(math.pow(2,self.idLength))
+        # calculate sizes for individual elements
+        self.calculateSizes()
+        # set the size request to make the drawing area scrollable
+        self.widget.set_size_request(self.canvasWidth,self.canvasHeight)
+
+        #paint background color
+        self.cr.set_source_rgb(*BACKGROUND_COLOR)
+        self.cr.paint()
+
+        for nodeCounter,node in enumerate(self.nodes):
+            self.connectNode(node)
+
+        for nodeCounter,node in enumerate(self.nodes):
+            self.placeNode(node, nodeCounter)
         
-        '''
-        #paint whole canvas
-        self.cr.set_source_rgb(0.5, 0.3, 0.0)
-        self.cr.paint_with_alpha(0.5)
-
-        #draw gradients with gradient mask
-        linear = cairo.LinearGradient(0, 0, 400, 400)
-        linear.add_color_stop_rgb(0, 0, 0.3, 0.8)
-        linear.add_color_stop_rgb(1, 0, 0.8, 0.3)
-
-        radial = cairo.RadialGradient(400, 400, 300, 470, 400, 400)
-        radial.add_color_stop_rgba(0, 0, 0, 0, 1)
-        radial.add_color_stop_rgba(0.5, 0, 0, 0, 0)
-
-        self.cr.set_source(linear)
-        self.cr.mask(radial)
-
-        # draw rectangle
-        self.cr.set_source_rgba(0,0,0,0.5)
-        self.cr.rectangle(50,75,100,100)
-        self.cr.fill()
-
-        # draw rectangle outline
-        self.cr.set_line_width(0.5)
-        self.cr.set_source_rgb(0, 0, 0)
-        self.cr.rectangle(250, 250, 50, 75)
-        self.cr.stroke()
-
-        #draw text
-        self.cr.set_source_rgb(0.0, 0.0, 0.0)
-        self.cr.select_font_face("Georgia")
-        self.cr.set_font_size(30)
-        x_bearing, y_bearing, width, height = self.cr.text_extents("NodeId = 1010010")[:4]
-        self.cr.move_to(300 - width / 2 - x_bearing, 300 - height / 2 - y_bearing)
-        self.cr.show_text("NodeId = 1010010")
-        '''
-
-        self.drawSkipPlusGraph()
+        
 
         return False
-
-
-
-
+        
 class PyApp(Gtk.Window):
-    def __init__(self):
+    def __init__(self, nodes: list):
         super(PyApp, self).__init__()
 
         self.scrolledWindow = Gtk.ScrolledWindow()
@@ -427,45 +423,11 @@ class PyApp(Gtk.Window):
         self.connect('delete-event', Gtk.main_quit)
         self.drawingArea=Gtk.DrawingArea()
 
-        drawElements = DrawElements(self.screenWidth, self.screenHeight)
+        drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
         self.drawingArea.connect('draw', drawElements.drawSkipPlusGraph)
 
-        #self.viewPort = Gtk.Viewport()
-        #self.viewPort.add(self.drawingArea)
-        #self.scrolledWindow.add(self.viewPort)
-        #flowbox = Gtk.FlowBox()
-        #flowbox.add(self.drawingArea)
-
-        #Gtk.Container.add(self.drawingArea)
-
-        #self.scrolledWindow.set_max_content_height (4000)
-        #self.scrolledWindow.add(self.drawingArea)
-        #self.scrolledWindow.add_with_viewport(self.drawingArea)
-        #self.add(self.drawingArea)
-
-        #self.add(self.scrolledWindow)
-
-        sw=Gtk.ScrolledWindow()
-        sw.set_policy(Gtk.PolicyType.ALWAYS, Gtk.PolicyType.ALWAYS)
-        #sw.set_border_width(100)
-        vp=Gtk.Viewport()
-        box=Gtk.VBox()
-
-        vp.set_size_request(100,100)
-        '''
-        for i in range(90):
-            da=Gtk.DrawingArea()
-            da.connect("draw", self.draw, [0.3, 0.4, 0.6])
-            da.set_size_request(100,100)
-            box.add(da)
-        '''
-
-        #self.drawingArea.set_size_request(10000,10000)
-        box.add(self.drawingArea)
-
-        sw.add(vp)
-        vp.add(box)        
-        self.add(sw)
+        self.scrolledWindow.add(self.drawingArea)
+        self.add(self.scrolledWindow)
         
         self.show_all()
 
@@ -482,49 +444,8 @@ class PyApp(Gtk.Window):
         return True
 
 
-class MyWindow(Gtk.ApplicationWindow):
+class Visualizer():
 
-    def __init__(self, app):
-        Gtk.Window.__init__(
-            self, title="ScrolledWindow Example", application=app)
-        self.set_default_size(200, 200)
-
-        # the scrolledwindow
-        scrolled_window = Gtk.ScrolledWindow()
-        scrolled_window.set_border_width(10)
-        # there is always the scrollbar (otherwise: AUTOMATIC - only if needed
-        # - or NEVER)
-        scrolled_window.set_policy(
-            Gtk.PolicyType.ALWAYS, Gtk.PolicyType.ALWAYS)
-
-        # an image - slightly larger than the window...
-        image = Gtk.Image()
-        image.set_from_file("gnome-image.png")
-
-        # add the image to the scrolledwindow
-        scrolled_window.add_with_viewport(image)
-
-        # add the scrolledwindow to the window
-        self.add(scrolled_window)
-
-import sys
-
-class MyApplication(Gtk.Application):
-
-    def __init__(self):
-        Gtk.Application.__init__(self)
-
-    def do_activate(self):
-        win = MyWindow(self)
-        win.show_all()
-
-    def do_startup(self):
-        Gtk.Application.do_startup(self)
-
-#app = MyApplication()
-#exit_status = app.run(sys.argv)
-
-
-
-PyApp()
-Gtk.main()
+    def __init__(self, nodes: list):
+        PyApp(nodes)
+        Gtk.main()
