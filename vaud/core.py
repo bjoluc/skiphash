@@ -65,7 +65,7 @@ def randomBitArray(byteSize):
 
 class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
     """
-    Like bitarray, but copyable by Twisted's Perspective Broker.
+    Like bitarray, but copyable by Twisted's Perspective Broker and hashable.
     Note: Do only use multiples of 8 as the BitArray length, as copying
     will transfer the BitArray into bytes and backwards.
     """
@@ -75,6 +75,9 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
         
     def setCopyableState(self, state):
         self.frombytes(state)
+    
+    def __hash__(self):
+        return CityHash64(self.to01())
     
     def unitValue(self):
         """
@@ -346,6 +349,9 @@ class Node(pb.Root):
         if not isinstance(other, (Node, NodeReference)):
             raise NotImplementedError()
         return self.id < other.id
+    
+    def __hash__(self):
+        return hash(self.id)
     
     def __str__(self):
         return "Node({}:{})".format(self.reference.host, self.reference.port)
