@@ -1,6 +1,7 @@
 import logging
 import random
 import sys
+from functools import total_ordering
 from ipaddress import IPv4Address
 from typing import Any, Union
 
@@ -9,6 +10,7 @@ from twisted.application.internet import TimerService
 from twisted.internet import defer, error, reactor
 from twisted.spread import flavors, pb
 
+from cityhash import CityHash64
 from vaud import thisHost
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,12 @@ def linkedDeferred(d: Union[defer.Deferred, Any]):
         return newDeferred
     return d
 
+def projectOntoUnitInterval(input: int, inputBitLength: int) -> float:
+    """
+    Projects any integer consisting of inputBitLength bits onto the [0,1) interval.
+    """
+    return 2**(-inputBitLength) * input
+
 def randomBitArray(byteSize):
     byteString = bytes(random.getrandbits(8) for _ in range(byteSize))
     bitArray = bitarray()
@@ -67,16 +75,27 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
         
     def setCopyableState(self, state):
         self.frombytes(state)
+    
+    def unitValue(self):
+        """
+        Returns the corresponding value in the [0,1) interval.
+        """
+        return projectOntoUnitInterval(int(self), self.length())
 
 pb.setUnjellyableForClass('vaud.core.CopyableBitArray', CopyableBitArray)
 
+@total_ordering
 class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     """
-    A NodeReference stores a host (IPv4Address, provided as string) and a port (int) of a distant node
+    A NodeReference stores a host (IPv4Address, provided as string)
+    and a port (int) of a distant node
     and will on demand connect to that node.
     Also, remote node methods can be invoked directly on a NodeReference
     and will be executed by the referenced node, returning a (maybe) deferred for
     the remote method's result.
+    Each NodeReference object has a unique uniformly random
+    64 bit id which is a hash of its host and port.
+    Comparing NodeReference objects will compare their ids.
     """
 
     _remoteReferenceDict = {}
@@ -93,34 +112,17 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     
     def postInit(self):
         self._remoteReference = None
-    
-    def __lt__(self, other):
-        if not isinstance(other, NodeReference):
-            raise NotImplementedError()
-        if self.host == other.host:
-            return self.port < other.port
-        return self.host < other.host
-    
-    def __le__(self, other):
-        return self.__lt__(other) or self.__eq__(other)
+        self._id = CityHash64("{}:{}".format(self.host, self.port))
 
     def __eq__(self, other):
         if not isinstance(other, NodeReference):
             raise NotImplementedError()
-        return self.host == other.host and self.port == other.port
-    
-    def __ge__(self, other):
-        return self.__gt__(other) or self.__eq__(other)
-    
-    def __gt__(self, other):
+        return self.id == other.id
+
+    def __lt__(self, other):
         if not isinstance(other, NodeReference):
             raise NotImplementedError()
-        if self.host == other.host:
-            return self.port > other.port
-        return self.host > other.host
-    
-    def __ne__(self, other):
-        return not self.__eq__(other)
+        return self.id < other.id
     
     def __getattr__(self, attrName: str):
         """
@@ -188,7 +190,7 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     
     @property
     def id(self):
-        return "{}:{}".format(self.host, self.port)
+        return self._id
     
     @property
     def remote(self):
@@ -235,64 +237,35 @@ class PseudoNodeReference(NodeReference):
     """
 
     def __init__(self, value):
-        valueMapping = {"lowest": 0, "highest": 1}
+        valueMapping = {"lowest": -1, "highest": 2**64 + 1}
         if value not in valueMapping:
             raise ValueError(("Only 'lowest' or 'highest' are allowed for initializing a PseudoNodeReference. "
                                 "'{}' given.").format(value))
         
-        self._value = valueMapping[value]
-    
-    def __lt__(self, other):
-        if not isinstance(other, NodeReference):
-            raise NotImplementedError()
-        if isinstance(other, PseudoNodeReference):
-            return self._value < other._value
-        return self._value == 0 # true if self is "lowest"
-    
-    def __le__(self, other):
-        return self.__lt__(other) or self.__eq__(other)
-
-    def __eq__(self, other):
-        if not isinstance(other, NodeReference):
-            raise NotImplementedError()
-        return isinstance(PseudoNodeReference, other) and other.value == self.value
-    
-    def __ge__(self, other):
-        return self.__gt__(other) or self.__eq__(other)
-    
-    def __gt__(self, other):
-        if not isinstance(other, NodeReference):
-            raise NotImplementedError()
-        if isinstance(other, PseudoNodeReference):
-            return self._value > other._value
-        return self._value == 1 # true if self is "highest"
-    
-    def __ne__(self, other):
-        return not self.__eq__(other)
+        self._id = valueMapping[value]
 
     def __getattr__(self, attrName: str):
         raise AttributeError(("'{}' PseudoNodeReference has no such member: '{}'. As a pseudo NodeReference, "
-                                "it can not call the method remotely.").format(self._value, attrName))
+                                "it can not call the method remotely.").format(self._id, attrName))
     
     def getStateToCopy(self):
-        return (self.host, self.port)
+        return self.id
         
     def setCopyableState(self, state):
-        host, self._port = state
-        self._host = IPv4Address(host)
+        self.id = state
     
     @property
     def host(self):
         """
-        A fake IP address: Either 0.0.0.0 or 255.255.255.255.
+        Is always ``None``.
         """
-        if self._value == 0:
-            return "0.0.0.0"
-        return "255.255.255.255"
-        
+        return None
 
     @property
     def port(self):
+        """
+        Is always ``0``.
+        """
         return 0
     
     @property
@@ -300,7 +273,7 @@ class PseudoNodeReference(NodeReference):
         """
         Returns either "lowest" or "highest".
         """
-        if self._value == 0:
+        if self._id == 0:
             return "lowest"
         return "highest"
     
@@ -310,6 +283,8 @@ class PseudoNodeReference(NodeReference):
         None, as this instance is a PseudoNodeReference that does not reference a remote node.
         """
         return None
+
+pb.setUnjellyableForClass('vaud.core.PseudoNodeReference', PseudoNodeReference)
 
 def remoteMethod(method):
     """
@@ -413,7 +388,9 @@ class NodeFactory:
         # get new port
         port = self._nextPort
         self._nextPort += 1
-        node = self._initNode(port, port == self._startPort)
+        isFirstNode = (port == self._startPort)
+        node = self._initNode(port, isFirstNode)
+        self._postInitNode(node, isFirstNode)
         self.registry[port] = node
         self.nodes.append(node)
         return node
@@ -424,6 +401,9 @@ class NodeFactory:
             deferreds.append(n.shutdown())
         return defer.gatherResults(deferreds)
     
-    def _initNode(self, port: int, isFirstNode: bool):
+    def _initNode(self, port: int, isFirstNode: bool) -> Node:
         """Override this to control node initialization."""
         return Node(port)
+    
+    def _postInitNode(self, node: Node, isFirstNode: bool) -> None:
+        """Will be called after each _initNode call, providing the new node."""

@@ -147,6 +147,7 @@ class SkipNode(Node):
         # a set of all nodes (SkipNodeReferences) that are currently
         # in at least one of this node's ranges
         self.nodesInRanges = set()
+
     
     @remoteMethod
     def rs(self):
@@ -226,7 +227,6 @@ class SkipNode(Node):
                     delegationDestination = longestCommonPrefixNode(w, self.N)
                     delegationDestination.linearise(w)
 
-
 class SkipNodeFactory(NodeFactory):
     """
     A NodeFactory for SkipNodes.
@@ -254,12 +254,12 @@ class SkipNodeFactory(NodeFactory):
     def _failedGettingEntryNodeRs(self, reason: str):
         logger.warn("Failed to get the entry node's random bit string! This host will not be connected to any other host.")
     
-    def _initNode(self, port: int, isFirstNode: bool):
-        node = SkipNode(port)
+    def _initNode(self, port: int, isFirstNode: bool) -> Node:
+        return SkipNode(port)
+    
+    def _postInitNode(self, node: Node, isFirstNode: bool) -> None:
         if isFirstNode:
             if self.entryNodeReference is not None:
                 node.linearise(self.entryNodeReference)
         else:
             node.linearise(self.nodes[-1].reference)
-            
-        return node

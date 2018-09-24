@@ -11,6 +11,7 @@ pycairo = "*"
 pygobject = "*"
 numpy = "*"
 bitarray = "*"
+cityhash = "*"
 
 [dev-packages]
 pylint = "*"
