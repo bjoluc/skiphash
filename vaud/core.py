@@ -115,12 +115,12 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
         self._id = CityHash64("{}:{}".format(self.host, self.port))
 
     def __eq__(self, other):
-        if not isinstance(other, NodeReference):
+        if not isinstance(other, (NodeReference, Node)):
             raise NotImplementedError()
         return self.id == other.id
 
     def __lt__(self, other):
-        if not isinstance(other, NodeReference):
+        if not isinstance(other, (NodeReference, Node)):
             raise NotImplementedError()
         return self.id < other.id
     
