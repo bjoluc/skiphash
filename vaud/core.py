@@ -296,7 +296,8 @@ def remoteMethod(method):
     return method
 
 remoteMethod.methodNames = set()
-    
+
+@total_ordering
 class Node(pb.Root):
     """
     A local node that offers methods for both local and remote callers.
@@ -335,6 +336,16 @@ class Node(pb.Root):
         
         # raising an attribute error for all other requests
         raise AttributeError("No such member: '{}'".format(attrName))
+    
+    def __eq__(self, other):
+        if not isinstance(other, (Node, NodeReference)):
+            raise NotImplementedError()
+        return self.id == other.id
+
+    def __lt__(self, other):
+        if not isinstance(other, (Node, NodeReference)):
+            raise NotImplementedError()
+        return self.id < other.id
     
     def __str__(self):
         return "Node({}:{})".format(self.reference.host, self.reference.port)

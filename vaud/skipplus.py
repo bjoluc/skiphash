@@ -147,15 +147,18 @@ class SkipNode(Node):
         # a set of all nodes (SkipNodeReferences) that are currently
         # in at least one of this node's ranges
         self.nodesInRanges = set()
-
     
     @remoteMethod
-    def rs(self):
+    def getRs(self):
         """
         The node's random bit string. For connecting a new node only.
         If a SkipNodeReference has been passed to you, you will
         want to use its rs attribute, instead of maybe dealing with a deferred.
         """
+        return self._rs
+    
+    @property
+    def rs(self):
         return self._rs
     
     # "Build-Skip" methods
@@ -243,7 +246,7 @@ class SkipNodeFactory(NodeFactory):
         if entryNodeHost is not None and entryNodePort is not None:
             # create a NodeReference to ask the entry node for its random bit string
             entryNodeReference = NodeReference(entryNodeHost, entryNodePort)
-            deferredRs = entryNodeReference.rs() # request random bit string
+            deferredRs = entryNodeReference.getRs() # request random bit string
             deferredRs.addCallbacks(self._gotEntryNodeRs, self._failedGettingEntryNodeRs)
     
     def _gotEntryNodeRs(self, rs: CopyableBitArray):
