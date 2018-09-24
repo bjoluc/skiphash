@@ -1,5 +1,6 @@
 import logging
-from typing import Set
+# general skip helper functions
+from typing import Set, Union
 
 from bitarray import bitarray
 from twisted.internet import defer
@@ -47,14 +48,17 @@ class SkipNodeReference(NodeReference):
 
 pb.setUnjellyableForClass('vaud.skipplus.SkipNodeReference', SkipNodeReference)
 
-# general skip helper functions
 
-def prefix(i: int, v: SkipNodeReference) -> CopyableBitArray:
+def prefix(i: int, v: Union["SkipNode", SkipNodeReference, bitarray]) -> CopyableBitArray:
     """
     Returns a copy of the first `i` bits of `v`s random
     bit string (rs) as a bitarray.
     """
-    return v.rs.copy()[:i]
+    if isinstance(v, (SkipNode, SkipNodeReference)):
+        rs = v.rs
+    else:
+        rs = v
+    return rs.copy()[:i]
 
 def pred(v: SkipNodeReference, W: Set[SkipNodeReference]) -> SkipNodeReference:
     """
