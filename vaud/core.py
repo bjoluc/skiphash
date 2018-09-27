@@ -113,6 +113,11 @@ class ComparableById:
         if isinstance(other, ComparableById):
             return self.id < other.id
         raise NotImplementedError()
+    
+    @property
+    def unitId(self):
+        """The object's 64 bit id projected onto the unit interval"""
+        return projectOntoUnitInterval(self.id, 64)
 
 class NodeReference(ComparableById, flavors.Copyable, flavors.RemoteCopy):
     """
