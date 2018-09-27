@@ -26,7 +26,7 @@ def test_operations(caplog, mocker):
     for _ in range(4):
         factory.newNode()
     
-    yield sleep(2)
+    yield sleep(4)
 
     nodes = factory.nodes
 
