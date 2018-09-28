@@ -65,7 +65,7 @@ def randomBitArray(byteSize):
 
 class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
     """
-    Like bitarray, but copyable by Twisted's Perspective Broker.
+    Like bitarray, but copyable by Twisted's Perspective Broker and hashable.
     Note: Do only use multiples of 8 as the BitArray length, as copying
     will transfer the BitArray into bytes and backwards.
     """
@@ -76,6 +76,16 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
     def setCopyableState(self, state):
         self.frombytes(state)
     
+    def __hash__(self):
+        return CityHash64(self.to01())
+    
+    def __int__(self):
+        bytes = self.tobytes()
+        result = 0
+        for b in bytes:
+            result = result * 256 + int(b)
+        return result
+    
     def unitValue(self):
         """
         Returns the corresponding value in the [0,1) interval.
@@ -85,7 +95,31 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
 pb.setUnjellyableForClass('vaud.core.CopyableBitArray', CopyableBitArray)
 
 @total_ordering
-class NodeReference(flavors.Copyable, flavors.RemoteCopy):
+class ComparableById:
+    """
+    A base class providing comparison methods for objects with 64 bit integer ids
+    """
+
+    def __eq__(self, other):
+        if isinstance(other, float):
+            return projectOntoUnitInterval(self.id, 64) == other
+        if isinstance(other, ComparableById):
+            return self.id == other.id
+        raise NotImplementedError()
+
+    def __lt__(self, other):
+        if isinstance(other, float):
+            return projectOntoUnitInterval(self.id, 64) < other
+        if isinstance(other, ComparableById):
+            return self.id < other.id
+        raise NotImplementedError()
+    
+    @property
+    def unitId(self):
+        """The object's 64 bit id projected onto the unit interval"""
+        return projectOntoUnitInterval(self.id, 64)
+
+class NodeReference(ComparableById, flavors.Copyable, flavors.RemoteCopy):
     """
     A NodeReference stores a host (IPv4Address, provided as string)
     and a port (int) of a distant node
@@ -113,16 +147,6 @@ class NodeReference(flavors.Copyable, flavors.RemoteCopy):
     def postInit(self):
         self._remoteReference = None
         self._id = CityHash64("{}:{}".format(self.host, self.port))
-
-    def __eq__(self, other):
-        if not isinstance(other, (NodeReference, Node)):
-            raise NotImplementedError()
-        return self.id == other.id
-
-    def __lt__(self, other):
-        if not isinstance(other, (NodeReference, Node)):
-            raise NotImplementedError()
-        return self.id < other.id
     
     def __getattr__(self, attrName: str):
         """
@@ -297,8 +321,7 @@ def remoteMethod(method):
 
 remoteMethod.methodNames = set()
 
-@total_ordering
-class Node(pb.Root):
+class Node(pb.Root, ComparableById):
     """
     A local node that offers methods for both local and remote callers.
     In order to make a method callable by a remote caller, it has to be
@@ -346,6 +369,9 @@ class Node(pb.Root):
         if not isinstance(other, (Node, NodeReference)):
             raise NotImplementedError()
         return self.id < other.id
+    
+    def __hash__(self):
+        return hash(self.id)
     
     def __str__(self):
         return "Node({}:{})".format(self.reference.host, self.reference.port)

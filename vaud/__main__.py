@@ -8,6 +8,7 @@ import sys
 from twisted.application.internet import TimerService
 from twisted.internet import reactor
 
+from vaud.analyze import Analyzer
 from vaud.skipplus import SkipNode, SkipNodeFactory
 from vaud.view import Visualizer
 
@@ -60,9 +61,8 @@ level0Range = myNode.ranges[0] # set of NodeReferences in range 0
 # Lots of space for your stuff :P
 print("now my stuff starts")
 
-
+analyzer = Analyzer(nodes)
 v = Visualizer(nodes)
-
 
 
 # ah, if you need a timer:
