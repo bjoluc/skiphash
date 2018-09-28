@@ -53,6 +53,7 @@ class DrawElements:
         self.nodes = nodes
 
     def calculateSizes(self) ->None:
+        '''calculates the absolute sizes of the elements drawn on screen bases on screen size and prior set constants'''
         # how large is a node
         self.nodeSize = (self.screenWidth - ((4*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +2) *RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth)) / (self.amountNodes + ((self.amountNodes -1) * RELATIVE_DISTANCE_NODES_HORIZONTAL))
         self.nodeSize = max(RELATIVE_MINIMUM_NODE_SIZE*self.screenWidth, self.nodeSize)
@@ -94,6 +95,8 @@ class DrawElements:
         
 
     def calculateFontSizeToFitWidth (self, fontface: str, allowedWidth: float, maxTextLength: int) -> int:
+        '''calculates the fontsize a textelement is allowed to have given its font and maximum text length.
+        At the moment this is not a good solution but the only one I found as you cannot directly calculate the fontsize over the textsize'''
         self.cr.select_font_face(fontface)
         #set the font size to a huge value
         self.cr.set_font_size(10000)
@@ -107,6 +110,7 @@ class DrawElements:
 
 
     def calculateVerticalPositionOfNode(self, iLayer: int, rsLayer: int) -> float:
+        '''Calculates the absolute vertical position of the center of a node based on its iLayer and rsLayer'''
         return (self.iLayerDistance*(iLayer+1)) + (self.rsLayerDistance*(math.pow(2,iLayer+1)-2+rsLayer))
         ''' ORIGINAL OBSOLETE CALCULATION
         for i in range(self.idLength):  #iterate over the i layers
@@ -129,6 +133,7 @@ class DrawElements:
         '''
 
     def calculateHorizontalPositionOfNode (self, nodeXPos) ->float:
+        '''Calculates the absolute horizontal position of a node based on its rank of all nodes'''
         return self.sideWidth+ self.distanceNodesHorizontal * nodeXPos
 
     def draw_rounded(self, upperLeftX: float, upperLeftY: float, lowerRightX: float, lowerRightY: float):
@@ -147,6 +152,8 @@ class DrawElements:
         self.cr.fill()
 
     def drawCliqueGrouping(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
+        '''Draws a rounded rectangle encasing all nodes in the interval beginning with node1 and ending with node2.
+        Only uses one specific iLayer and rsLayer'''
         #set color
         self.cr.set_source_rgb(*CLIQUE_GROUPING_COLOR)
         yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
@@ -160,6 +167,29 @@ class DrawElements:
 
         self.draw_rounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
         
+    def drawArrowHead(self, headHeight:float, headWidth:float, edgeMedianX:float, edgeMedianY:float, edgeMedianAngle:float) -> None:
+        edgeMedianOffset = 50
+
+        headStartingPointX = edgeMedianX + math.cos(edgeMedianAngle)*edgeMedianOffset
+        headStartingPointY = edgeMedianY - math.sin(edgeMedianAngle)*edgeMedianOffset
+
+        headSideX = edgeMedianX + (math.cos(edgeMedianAngle)*(edgeMedianOffset+headWidth))
+        headSideY = edgeMedianY - (math.sin(edgeMedianAngle)*(edgeMedianOffset+headWidth))
+        
+        headBaseOffsetX = math.sin(edgeMedianAngle)*headHeight/2.0
+        headBaseOffsetY = math.cos(edgeMedianAngle)*headHeight/2.0
+
+        headUpX = headStartingPointX - headBaseOffsetX
+        headUpY = headStartingPointY - headBaseOffsetY
+
+        headDownX = headStartingPointX + headBaseOffsetX
+        headDownY = headStartingPointY + headBaseOffsetY
+
+        self.cr.move_to(headUpX,headUpY)
+        self.cr.line_to(headSideX,headSideY)
+        self.cr.line_to(headDownX,headDownY)
+        self.cr.fill()
+
     def drawHorizontalEdge(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
         ''' draws a horizontal edge from node1XPos to node2XPos on the specified iLayer and rsLayer'''
         #set color
@@ -174,8 +204,11 @@ class DrawElements:
         self.cr.line_to(x2Pos,yPos)
         self.cr.stroke()
 
+        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, 0)
+
 
     def drawDiagonalEdge(self, node1XPos: int, node2XPos: int, iLayer1: int, iLayer2: int, rsLayer1: int, rsLayer2: int) -> None:
+        ''' draws a diagonal edge from node1 to node2'''
         #set color
         self.cr.set_source_rgb(*EDGE_DIAGONAL_COLOR)
         #set line thickness
@@ -396,10 +429,23 @@ class DrawElements:
 
         for nodeCounter,node in enumerate(self.nodes):
             self.placeNode(node, nodeCounter)
-        
-        
+              
 
         return False
+
+    def redraw(self) -> None:
+
+        print("now redraw")
+        # get id length
+        #paint background color
+        self.cr.set_source_rgb(*BACKGROUND_COLOR)
+        self.cr.paint()
+
+        for nodeCounter,node in enumerate(self.nodes):
+            self.connectNode(node)
+
+        for nodeCounter,node in enumerate(self.nodes):
+            self.placeNode(node, nodeCounter)
         
 class PyApp(Gtk.Window):
     def __init__(self, nodes: list):
@@ -423,8 +469,8 @@ class PyApp(Gtk.Window):
         self.connect('delete-event', Gtk.main_quit)
         self.drawingArea=Gtk.DrawingArea()
 
-        drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
-        self.drawingArea.connect('draw', drawElements.drawSkipPlusGraph)
+        self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
+        self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)
 
         self.scrolledWindow.add(self.drawingArea)
         self.add(self.scrolledWindow)
@@ -447,5 +493,5 @@ class PyApp(Gtk.Window):
 class Visualizer():
 
     def __init__(self, nodes: list):
-        PyApp(nodes)
+        self.pyApp = PyApp(nodes)
         Gtk.main()
