@@ -68,7 +68,8 @@ v = Visualizer(nodes, analyzer)
 # ah, if you need a timer:
 def updateView():
     pass
-timer = TimerService(1, updateView)  # use some of your object's update method of course ;)
+
+timer = TimerService(1, v.redraw)  # use some of your object's update method of course ;)
 timer.startService()
 
 # Starting the Twisted reactor, runs the nodes

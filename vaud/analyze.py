@@ -15,8 +15,8 @@ class Analyzer():
         # mapping nodes to their horizontal positional index
         self.nodeToIndexMap = dict((n, index) for index, n in enumerate(self.nodes))
         self.prefixToNodesMap = self._calculatePrefixToNodesMap()
-        # a list of all prefixes with actual nodes, sorted by prefix length, descending
-        self.prefixes = sorted(self.prefixToNodesMap.keys(), key=lambda rs: len(rs), reverse=True)
+        # a list of all prefixes with actual nodes, sorted by prefix length and then by random string, ascending
+        self.prefixes = sorted(self.prefixToNodesMap.keys(), key=lambda rs: (len(rs), rs))
         
     def _calculatePrefixToNodesMap(self):
         """
@@ -27,7 +27,7 @@ class Analyzer():
         for node in self.nodes:
             rs = node.rs
             # iterate over rs prefix length
-            for prefixLength in range(0, len(rs)-1):
+            for prefixLength in range(1, len(rs)):
                 rsPrefix = prefix(prefixLength, rs)
                 if rsPrefix in map:
                     map[rsPrefix].append(node)
