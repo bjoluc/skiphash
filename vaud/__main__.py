@@ -62,7 +62,7 @@ level0Range = myNode.ranges[0] # set of NodeReferences in range 0
 print("now my stuff starts")
 
 analyzer = Analyzer(nodes)
-v = Visualizer(nodes)
+v = Visualizer(nodes, analyzer)
 
 
 # ah, if you need a timer:

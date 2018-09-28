@@ -47,10 +47,11 @@ RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT = 0.1 #defines how far away in horizontal d
 
 class DrawElements:
 
-    def __init__(self, screenWidth, screenHeight, nodes: list):
+    def __init__(self, screenWidth, screenHeight, nodes: list, analyser):
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         self.nodes = nodes
+        self.analyzer = analyser
 
     def calculateSizes(self) ->None:
         '''calculates the absolute sizes of the elements drawn on screen bases on screen size and prior set constants'''
@@ -112,25 +113,9 @@ class DrawElements:
     def calculateVerticalPositionOfNode(self, iLayer: int, rsLayer: int) -> float:
         '''Calculates the absolute vertical position of the center of a node based on its iLayer and rsLayer'''
         return (self.iLayerDistance*(iLayer+1)) + (self.rsLayerDistance*(math.pow(2,iLayer+1)-2+rsLayer))
-        ''' ORIGINAL OBSOLETE CALCULATION
-        for i in range(self.idLength):  #iterate over the i layers
-            yPos = yPos + self.iLayerDistance
-            for rs in range(int(math.pow(2,i+1))):  #iterate over the i layers
-                if i==iLayer and rs==rsLayer:
-
-                    print("for iLayer " + str(iLayer) + " and rsLayer " + str(rsLayer) + " it's " + str(yPos))
-                    x1Pos = self.sideWidth+ (RELATIVE_DISTANCE_NODES_HORIZONTAL+1)*self.nodeSize * node1XPos
-                    x2Pos = self.sideWidth+ (RELATIVE_DISTANCE_NODES_HORIZONTAL+1)*self.nodeSize * node2XPos
-                    upperLeftX = x1Pos-self.cliqueDistanceSide -(0.5*self.nodeSize)
-                    upperLeftY = yPos-self.cliqueDistanceAbove -(0.5*self.nodeSize)
-                    lowerRightX = x2Pos+self.cliqueDistanceSide +(0.5*self.nodeSize)
-                    lowerRightY = yPos+self.cliqueDistanceBelow +(0.5*self.nodeSize)
-
-                    self.draw_rounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
-                    #self.draw_rounded(500, 1500, 1700, 1700)
-
-                yPos = yPos + self.rsLayerDistance
-        '''
+        
+        #for prefix in self.analyzer.prefixes:
+        #    self.analyzer.prefixToNodesMap[prefix]
 
     def calculateHorizontalPositionOfNode (self, nodeXPos) ->float:
         '''Calculates the absolute horizontal position of a node based on its rank of all nodes'''
@@ -170,52 +155,70 @@ class DrawElements:
     def drawArrowHead(self, headHeight:float, headWidth:float, edgeMedianX:float, edgeMedianY:float, edgeMedianAngle:float) -> None:
         edgeMedianOffset = 50
 
-        headStartingPointX = edgeMedianX + math.cos(edgeMedianAngle)*edgeMedianOffset
-        headStartingPointY = edgeMedianY - math.sin(edgeMedianAngle)*edgeMedianOffset
+        #if random.random()<0.5:
+        #    edgeMedianAngle = edgeMedianAngle +math.pi
 
-        headSideX = edgeMedianX + (math.cos(edgeMedianAngle)*(edgeMedianOffset+headWidth))
-        headSideY = edgeMedianY - (math.sin(edgeMedianAngle)*(edgeMedianOffset+headWidth))
+        #precalculate the cos and sin values of the angle
+        cosAngle = math.cos(edgeMedianAngle)
+        sinAngle = math.sin(edgeMedianAngle)
+
+        # calculate the point where the base intersects with the edge
+        headStartingPointX = edgeMedianX + cosAngle*edgeMedianOffset
+        headStartingPointY = edgeMedianY - sinAngle*edgeMedianOffset
+
+        # calculate the point for the arrow tip
+        headSideX = edgeMedianX + (cosAngle*(edgeMedianOffset+headWidth))
+        headSideY = edgeMedianY - (sinAngle*(edgeMedianOffset+headWidth))
         
-        headBaseOffsetX = math.sin(edgeMedianAngle)*headHeight/2.0
-        headBaseOffsetY = math.cos(edgeMedianAngle)*headHeight/2.0
+        # calculate the offsets from the edge intersection point to the base limiters
+        headBaseOffsetX = sinAngle*headHeight/2.0
+        headBaseOffsetY = cosAngle*headHeight/2.0
 
+        # calculate base limiters with the help of the offsets
         headUpX = headStartingPointX - headBaseOffsetX
         headUpY = headStartingPointY - headBaseOffsetY
 
         headDownX = headStartingPointX + headBaseOffsetX
         headDownY = headStartingPointY + headBaseOffsetY
 
+        # draw lines and fill them
+        # color should have been set by the calling function
         self.cr.move_to(headUpX,headUpY)
         self.cr.line_to(headSideX,headSideY)
         self.cr.line_to(headDownX,headDownY)
         self.cr.fill()
 
-    def drawHorizontalEdge(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
-        ''' draws a horizontal edge from node1XPos to node2XPos on the specified iLayer and rsLayer'''
+    def drawHorizontalEdge(self, fromXPos: int, toXPos: int, iLayer: int, rsLayer: int) -> None:
+        ''' draws a horizontal edge from node fromXPos to node toXPos on the specified iLayer and rsLayer'''
         #set color
         self.cr.set_source_rgb(*EDGE_HORIZONTAL_COLOR)
         #set line thickness
         self.cr.set_line_width (self.horizontalEdgeThickness)
-        x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
-        x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
+        x1Pos = self.calculateHorizontalPositionOfNode(fromXPos)
+        x2Pos = self.calculateHorizontalPositionOfNode(toXPos)
         yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
 
         self.cr.move_to(x1Pos,yPos)
         self.cr.line_to(x2Pos,yPos)
         self.cr.stroke()
 
-        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, 0)
+        if fromXPos<toXPos: #arrowhead points right
+            arrowHeadAngle = 0
+        else: #arrowHead points left
+            arrowHeadAngle = math.pi
+
+        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
 
 
-    def drawDiagonalEdge(self, node1XPos: int, node2XPos: int, iLayer1: int, iLayer2: int, rsLayer1: int, rsLayer2: int) -> None:
-        ''' draws a diagonal edge from node1 to node2'''
+    def drawDiagonalEdge(self, fromXPos: int, toXPos: int, iLayer1: int, iLayer2: int, rsLayer1: int, rsLayer2: int) -> None:
+        ''' draws a diagonal edge from node from to node to'''
         #set color
         self.cr.set_source_rgb(*EDGE_DIAGONAL_COLOR)
         #set line thickness
         self.cr.set_line_width (self.diagonalEdgeThickness)
         
-        x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
-        x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
+        x1Pos = self.calculateHorizontalPositionOfNode(fromXPos)
+        x2Pos = self.calculateHorizontalPositionOfNode(toXPos)
         y1Pos = self.calculateVerticalPositionOfNode(iLayer1, rsLayer1)
         y2Pos = self.calculateVerticalPositionOfNode(iLayer2, rsLayer2)
 
@@ -223,27 +226,45 @@ class DrawElements:
         self.cr.line_to(x2Pos,y2Pos)
         self.cr.stroke()
 
-    def drawCurvedEdge(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
+        # calculate the arrow head angle. Multiply by -1 because GTK uses DirectX coordinates
+        arrowHeadAngle = -math.atan((y2Pos-y1Pos)/(x2Pos-x1Pos)) 
+
+        if fromXPos>toXPos: #arrowhead points left. Add pi. Flip it 180°
+            arrowHeadAngle = arrowHeadAngle + math.pi
+
+        #print("arrowHeadAngle: " + str(arrowHeadAngle))
+        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, arrowHeadAngle)
+
+    def drawCurvedEdge(self, fromXPos: int, toXPos: int, iLayer: int, rsLayer: int) -> None:
         #set color
         self.cr.set_source_rgb(*EDGE_CURVED_COLOR)
         #set line thickness
         self.cr.set_line_width (self.curvedEdgeThickness)
         # calculate positions
-        x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
-        x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
+        x1Pos = self.calculateHorizontalPositionOfNode(fromXPos)
+        x2Pos = self.calculateHorizontalPositionOfNode(toXPos)
         yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
 
         control1X = x1Pos+self.curvedEdgeControlPointWidth
         control2X = x2Pos-self.curvedEdgeControlPointWidth
-        if (node2XPos-node1XPos)%2 == 0: #alternate between even and odd distances
+        if (fromXPos-toXPos)%2 == 0: #alternate between even and odd distances
             controlY = yPos+self.curvedEdgeControlPointHeight
+            arrowHeadY = yPos+ (3.0*self.curvedEdgeControlPointHeight/4.0)
         else:
             controlY = yPos-self.curvedEdgeControlPointHeight
+            arrowHeadY = yPos- (3.0*self.curvedEdgeControlPointHeight/4.0)
 
         # draw
         self.cr.move_to(x1Pos,yPos)
         self.cr.curve_to(control1X,controlY,  control2X,controlY,  x2Pos,yPos)
         self.cr.stroke()
+
+        if fromXPos<toXPos: #arrowhead points right
+            arrowHeadAngle = 0
+        else: #arrowHead points left
+            arrowHeadAngle = math.pi
+
+        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
         '''
         height = 3/4 *(yPos+self.curvedEdgeControlPointHeight) + 1/4 *(yPos)
         self.cr.move_to(x1Pos,height)
@@ -310,7 +331,8 @@ class DrawElements:
         return int(node.rs.to01()[:iLayer+1], 2)
 
     def calculateXPosOfNode (self, node:Node) -> int:
-        return self.nodes.index(node)
+        #return self.nodes.index(node)
+        return self.analyzer.nodeToIndexMap[node]
 
     def checkForIntermediateNodes (self, nodeLeftIndex:int, nodeRightIndex:int, iLayer:int, rsLayer:int) -> bool:
         for nodeIndex in range(nodeLeftIndex+1, nodeRightIndex-1):
@@ -448,7 +470,7 @@ class DrawElements:
             self.placeNode(node, nodeCounter)
         
 class PyApp(Gtk.Window):
-    def __init__(self, nodes: list):
+    def __init__(self, nodes: list, analyser):
         super(PyApp, self).__init__()
 
         self.scrolledWindow = Gtk.ScrolledWindow()
@@ -469,7 +491,7 @@ class PyApp(Gtk.Window):
         self.connect('delete-event', Gtk.main_quit)
         self.drawingArea=Gtk.DrawingArea()
 
-        self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
+        self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes, analyser)
         self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)
 
         self.scrolledWindow.add(self.drawingArea)
@@ -492,6 +514,6 @@ class PyApp(Gtk.Window):
 
 class Visualizer():
 
-    def __init__(self, nodes: list):
-        self.pyApp = PyApp(nodes)
+    def __init__(self, nodes: list, analyser):
+        self.pyApp = PyApp(nodes, analyser)
         Gtk.main()
