@@ -56,6 +56,7 @@ class DrawElements:
         self.screenHeight = screenHeight
         self.nodes = nodes
         self.analyzer = analyzer
+        self.updateCounter = 0
 
     def calculateSizes(self) ->None:
         '''calculates the absolute sizes of the elements drawn on screen bases on screen size and prior set constants'''
@@ -328,13 +329,13 @@ class DrawElements:
         #set font face
         self.cr.set_font_size(self.rsTextFontSize)
         #place single id text
-        RsText = node.rs.to01()
-        x_bearing, y_bearing, width, height = self.cr.text_extents(RsText)[:4]
+        rsText = node.rs.to01()
+        x_bearing, y_bearing, width, height = self.cr.text_extents(rsText)[:4]
         self.cr.move_to(xPos - width / 2 - x_bearing, yPosText - height / 2 - y_bearing)
-        self.cr.show_text(RsText)
+        self.cr.show_text(rsText)
 
-    def drawLayerMarkings(self) ->None:             
-
+    def drawLayerMarkings(self) ->None:
+        '''draws all side texts for the iLayers and rsLayers for the'''
         #set color
         self.cr.set_source_rgb(*TEXT_COLOR)
         #set correct font size
@@ -381,13 +382,16 @@ class DrawElements:
             
 
     def calculateRsLayerOfNode (self, node:Node, iLayer: int) -> int:
+        '''given a node and its iLayer this function calculates the rsLayer the node is located on'''
         return int(node.rs.to01()[:iLayer+1], 2)
 
     def getIndexOfNode (self, node:Node) -> int:
+        '''returns the index or the relative horizontal position of the node'''
         #return self.nodes.index(node)
         return self.analyzer.nodeToIndexMap[node]
 
     def checkForIntermediateNodes (self, node1:Node, node2:Node, rsPrefix) -> bool:
+        '''checks if there exists an intermediate node between node1 and node2. Both of them need to be on the same rsLayer'''
         if self.getIndexOfNode(node1)<self.getIndexOfNode(node2):
             nodeLeft = node1
             nodeRight = node2
@@ -409,6 +413,7 @@ class DrawElements:
 
 
     def placeNode(self, node:Node) ->None:
+        '''takes a node and draws it on the appropriate position on the skip+ graph'''
         # for each i-layer
         for iLayer in range(self.rsLength-1):
             # find rs
@@ -421,6 +426,7 @@ class DrawElements:
         
 
     def connectNode(self, node:Node) ->None:
+        '''takes a node and draws edges for each neighbor the node has alternating between horizontal, diagonal, and curved edges when necessary'''
         # for each i-layer
         for iLayer in range(self.rsLength-1):
             for neighbor in node.ranges[iLayer]:
@@ -447,8 +453,9 @@ class DrawElements:
         pass
 
     def drawSkipPlusGraph(self, widget, cr):
+        '''draw call for the entire skip+ graph'''
 
-        print("starting drawing")
+        #print("starting drawing")
         self.cr = cr
         self.widget = widget
 
@@ -464,7 +471,7 @@ class DrawElements:
         self.cr.paint()
 
         # draw edges
-        for nodeCounter,node in enumerate(self.nodes):
+        for node in self.nodes:
             self.connectNode(node)
 
         # draw nodes
@@ -474,12 +481,23 @@ class DrawElements:
         # draw layer markings
         self.drawLayerMarkings()
 
-        print("done with drawing")
+        #print("done with drawing")
+
+        #draw counter
+        CounterText = "update " + str(self.updateCounter)
+        x_bearing, y_bearing, width, height = self.cr.text_extents(CounterText)[:4]
+        xPos = 100
+        yPosText = 200
+        self.cr.move_to(xPos - width / 2 - x_bearing, yPosText - height / 2 - y_bearing)
+        self.cr.show_text(CounterText)
+
         return False
 
-    def redraw(self) -> None:
-        print("now in the main redraw")
+    def redraw(self) -> bool:
+        #print("now in the main redraw")
+        self.updateCounter = self.updateCounter+1
         self.widget.queue_draw()
+        #self.drawSkipPlusGraph(self.widget, self.cr)
         '''
         self.calculateSizes()
 
@@ -498,51 +516,51 @@ class DrawElements:
         # draw layer markings
         self.drawLayerMarkings()
 
-        return False
         '''
+        return True
 
-    def renewNodes(self, nodes: list, analyzer):
-        self.nodes = nodes
-        self.analyzer = analyzer
-    
-from twisted.application.internet import TimerService    
+from gi.repository import GLib
+
 class PyApp(Gtk.Window):
     def __init__(self, nodes: list, analyzer):
         super(PyApp, self).__init__()
 
+        self.set_title("Skip+ Graph")
         self.scrolledWindow = Gtk.ScrolledWindow()
         self.scrolledWindow.set_policy(Gtk.PolicyType.ALWAYS, Gtk.PolicyType.ALWAYS)
-        self.scrolledWindow.set_border_width(10)
-        #self.scrolledWindow.set_propagate_natural_width(True)
         self.screen = self.scrolledWindow.get_screen()
         # Using the screen of the Window, the monitor it's on can be identified
         self.m = self.screen.get_monitor_at_window(self.screen.get_active_window())
         # Then get the geometry of that monitor
         self.monitor = self.screen.get_monitor_geometry(self.m)
-        # This is an example output
-        #print("Height: %s, Width: %s" % (self.monitor.height, self.monitor.width))
         self.screenWidth = self.monitor.width
         self.screenHeight = self.monitor.height
-        self.set_title("Skip+ Graph")
         self.set_default_size(self.screenWidth,self.screenHeight)
         self.connect('delete-event', Gtk.main_quit)
         self.drawingArea=Gtk.DrawingArea()
 
         self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes, analyzer)
         self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)
+        
+        
+        GLib.timeout_add(500, self.drawElements.redraw ) 
 
         self.scrolledWindow.add(self.drawingArea)
         self.add(self.scrolledWindow)
         
         self.show_all()
+
     
     def expose(self):
         pass
 
+    '''
     def redraw(self):
         print("upper draw call")
         self.drawElements.redraw()
         #self.drawingArea.widgetQueueDraw()
+        return False
+    '''
 
 class Visualizer():
 
@@ -552,7 +570,9 @@ class Visualizer():
         self.pyApp = PyApp(nodes, analyzer)
         Gtk.main()
 
+    '''
     def redraw(self):
         self.pyApp.redraw()
         #self.pyApp = PyApp(self.nodes, self.analyzer)
         #Gtk.main()
+    '''
