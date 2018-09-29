@@ -565,8 +565,8 @@ class PyApp(Gtk.Window):
 class Visualizer():
 
     def __init__(self, nodes: list, analyzer):
-        self.nodes = nodes
-        self.analyzer = analyzer
+        #self.nodes = nodes
+        #self.analyzer = analyzer
         self.pyApp = PyApp(nodes, analyzer)
         Gtk.main()
 
