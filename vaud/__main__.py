@@ -81,7 +81,9 @@ level0Range = myNode.ranges[0] # set of NodeReferences in range 0
 print("now my stuff starts")
 
 analyzer = Analyzer(nodes)
-v = Visualizer(nodes, analyzer)
+def startVisualizer():
+    Visualizer(nodes, analyzer)
+reactor.callFromThread(startVisualizer)
 
 '''
 # ah, if you need a timer:
