@@ -8,7 +8,7 @@ test:
 	pipenv run py.test -v --exitfirst vaud
 
 run:
-	pipenv run python -m vaud
+	pipenv run python -m vaud --visualize -n 10
 
 requirements:
 	pipenv run pipenv_to_requirements

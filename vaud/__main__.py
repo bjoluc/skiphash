@@ -2,6 +2,7 @@
 # display a visualization of the local nodes and
 # their neighbors.
 
+import argparse
 import logging
 import sys
 
@@ -26,14 +27,32 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 streamHandler.setFormatter(formatter)
 rootLogger.addHandler(streamHandler)
 
-factory = SkipNodeFactory(33000)
+# parse arguments
 
-# input values (will be parsed from cli later)
-numNodes = 10
-visualize = True
+parser = argparse.ArgumentParser(prog='skiphash', description='A distributed hash table based on a skip plus overlay network')
+parser.add_argument('-n', '--nodes', type=int, default=1,
+                    help='The number of nodes to be run locally. Defaults to 1.')
+parser.add_argument('-p', '--port', type=int, default=33000,
+                    help='The port to be used by the first local node. Defaults to 33000.')
+parser.add_argument('-c', '--connect', type=str, default="",
+                    help='If set, the local nodes will be connected to the host:port tuple specified after this flag.')
+parser.add_argument('-v', '--visualize', action='store_true',
+                    help='Runs a graphic user interface with a visualization of the skip graph formed by the local nodes.')
+args = parser.parse_args()
 
-for _ in range(numNodes):
+# setup nodes
+
+if not args.connect:
+    factory = SkipNodeFactory(args.port)
+else:
+    host, port = args.connect.split(':')
+    factory = SkipNodeFactory(args.port, host, int(port))
+
+for _ in range(args.nodes):
     factory.newNode()
+
+# setup visualization
+visualize = args.visualize
 
 # Here we go - those are your nodes! ;)
 nodes = sorted(factory.nodes)
