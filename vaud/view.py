@@ -16,7 +16,7 @@ CONNECTION_LINES_COLOR = (0.368, 0.368, 0.368)
 BACKGROUND_COLOR =  (0.090, 0.090, 0.090) #(0.858, 0.858, 0.858)
 
 #font constants
-ID_TEXT_FONT = "Georgia"
+RS_TEXT_FONT = "Georgia"
 LAYER_TEXT_FONT = "Georgia"
 
 #positioning and size constants
@@ -24,13 +24,13 @@ RELATIVE_DISTANCE_NODES_HORIZONTAL = 3 #how many nodes should fit between two no
 RELATIVE_MINIMUM_NODE_SIZE = 0.013 #defines how large a node must be at the minimum relative to the screen width
 RELATIVE_MAXIMUM_NODE_SIZE = 0.03 #defines how large a node must be at the maximum relative to the screen width
 
-RELATIVE_TEXT_WIDTH_TO_SCREEN = 1/15.0 #defines the width of the longest text on the left side
-RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT = 0.5 #defines the empty space width left and right to the left column text relative to that text
+RELATIVE_TEXT_WIDTH_TO_SCREEN = 1/10.0 #defines the width of the longest text on the left side
+RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT = 0.2 #defines the empty space width left and right to the left column text relative to that text
 
-RELATIVE_WIDTH_OF_ID_TEXTS = 3 #defines how wide the id texts are in relation to the size of a node
-RELATIVE_OFFSET_OF_ID_TEXTS = 0.5 #defines how far below the id text will be placed below a node in relation to the size of a node
+RELATIVE_WIDTH_OF_RS_TEXTS = 3 #defines how wide the id texts are in relation to the size of a node
+RELATIVE_OFFSET_OF_RS_TEXTS = 0.5 #defines how far below the id text will be placed below a node in relation to the size of a node
 
-RELATIVE_RS_LAYER_HEIGHT_TO_NODE_SIZE = 3.4 # defines the height of the rs layer as defined on S.167 relative to the node size. Unlike the slide, in this representation all rs layers will be quidistant in the same i layer
+RELATIVE_RS_LAYER_HEIGHT_TO_NODE_SIZE = 3.6 # defines the height of the rs layer as defined on S.167 relative to the node size. Unlike the slide, in this representation all rs layers will be quidistant in the same i layer
 RELATIVE_DISTANCE_BETWEEN_I_LAYERS_TO_NODE_SIZE = 5.0 #defines the distance between the i layers as defined on S.167 relative to the node size.
 
 RELATIVE_CLIQUE_DISTANCE_SIDE = 0.85 #defines the distance from the side end of the node to the sides of the clique grouping relative to the node size
@@ -38,12 +38,16 @@ RELATIVE_CLIQUE_DISTANCE_ABOVE = 0.3 #defines the distance from the upper end of
 RELATIVE_CLIQUE_DISTANCE_BELOW = 1.0 #defines the distance from the lower end of the node to the lower side of the clique grouping relative to the node size
 RELATIVE_CORNER_RADIUS_OF_CLIQUES_TO_HEIGHT = 0.2 #defines the corner radius of the clique groupings relative to their height
 
-RELATIVE_HORIZONTAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.3 #defines how thick an horizontal edge is relative to the node size
-RELATIVE_DIAGONAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.2 #defines how thick an diagonal edge is relative to the node size
+RELATIVE_HORIZONTAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.13 #defines how thick an horizontal edge is relative to the node size
+RELATIVE_DIAGONAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.1 #defines how thick an diagonal edge is relative to the node size
 RELATIVE_CURVED_EDGE_THICKNESS_TO_NODE_SIZE = 0.08 #defines how thick an curved edge is relative to the node size
 
-RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE = 0.7 #defines the height a curved edge can take in relation to the rs layer distance
+RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE = 0.6 #defines the height a curved edge can take in relation to the rs layer distance
 RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT = 0.1 #defines how far away in horizontal direction the control points will be placed for a curved edge in relation to the height of the control point. Lower values (also <0) make the curve harsher
+
+RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE = 0.5 #defines how tall an arrow head is in relation to a node
+RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is in relation to a node
+RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.5 #defines how far an arrow head will be offset from the middle of the edge
 
 class DrawElements:
 
@@ -73,7 +77,10 @@ class DrawElements:
         # how high and wide will the control points be set for a curved edge
         self.curvedEdgeControlPointHeight = RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE*self.rsLayerDistance *4.0/3.0
         self.curvedEdgeControlPointWidth = RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT * self.curvedEdgeControlPointHeight
-        # how thick is the vertical dotted connection line
+        # how tall and wide is an arrowhead and how far is it offset from the edge median
+        self.arrowHeadHeight = RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE*self.nodeSize
+        self.arrowHeadWidth = RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE*self.nodeSize
+        self.arrowHeadEdgeMedianOffset = RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE*self.nodeSize
         # how large is a clique grouping
         self.cliqueDistanceSide = RELATIVE_CLIQUE_DISTANCE_SIDE*self.nodeSize
         self.cliqueDistanceAbove = RELATIVE_CLIQUE_DISTANCE_ABOVE*self.nodeSize
@@ -82,12 +89,12 @@ class DrawElements:
         # how large is a level marking - currently using a BAD solution
         self.levelMarkingMaxWidth = RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth
         self.sideWidth = (2*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +1)*self.levelMarkingMaxWidth
-        self.levelTextFontSize = self.calculateFontSizeToFitWidth(LAYER_TEXT_FONT, self.levelMarkingMaxWidth, self.idLength+6) #there are 6 additional characters: rs=...  
+        self.levelTextFontSize = self.calculateFontSizeToFitWidth(LAYER_TEXT_FONT, self.levelMarkingMaxWidth, self.rsLength+6) #there are 6 additional characters: rs=...  
         #print("levelMarkingMaxWidth is " + str(self.levelMarkingMaxWidth))
         #print("sideWidth is " + str(self.sideWidth))
         # how large is the id text - currently using a BAD solution
-        self.widthOfIdText = RELATIVE_WIDTH_OF_ID_TEXTS*self.nodeSize  
-        self.idTextFontSize = self.calculateFontSizeToFitWidth(ID_TEXT_FONT, self.widthOfIdText, self.idLength)  
+        self.widthOfRsText = RELATIVE_WIDTH_OF_RS_TEXTS*self.nodeSize  
+        self.rsTextFontSize = self.calculateFontSizeToFitWidth(RS_TEXT_FONT, self.widthOfRsText, self.rsLength)  
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
         #print("self.canvasWidth " + str(self.canvasWidth))
@@ -171,27 +178,25 @@ class DrawElements:
 
         self.draw_rounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
         
-    def drawArrowHead(self, headHeight:float, headWidth:float, edgeMedianX:float, edgeMedianY:float, edgeMedianAngle:float) -> None:
-        edgeMedianOffset = 50
-
-        #if random.random()<0.5:
-        #    edgeMedianAngle = edgeMedianAngle +math.pi
+    def drawArrowHead(self, edgeMedianX:float, edgeMedianY:float, edgeMedianAngle:float) -> None:
+        self.arrowHeadHeight = RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE*self.nodeSize
+        self.arrowHeadWidth = RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE*self.nodeSize
 
         #precalculate the cos and sin values of the angle
         cosAngle = math.cos(edgeMedianAngle)
         sinAngle = math.sin(edgeMedianAngle)
 
         # calculate the point where the base intersects with the edge
-        headStartingPointX = edgeMedianX + cosAngle*edgeMedianOffset
-        headStartingPointY = edgeMedianY - sinAngle*edgeMedianOffset
+        headStartingPointX = edgeMedianX + cosAngle*self.arrowHeadEdgeMedianOffset
+        headStartingPointY = edgeMedianY - sinAngle*self.arrowHeadEdgeMedianOffset
 
         # calculate the point for the arrow tip
-        headSideX = edgeMedianX + (cosAngle*(edgeMedianOffset+headWidth))
-        headSideY = edgeMedianY - (sinAngle*(edgeMedianOffset+headWidth))
+        headSideX = edgeMedianX + (cosAngle*(self.arrowHeadEdgeMedianOffset+self.arrowHeadWidth))
+        headSideY = edgeMedianY - (sinAngle*(self.arrowHeadEdgeMedianOffset+self.arrowHeadWidth))
         
         # calculate the offsets from the edge intersection point to the base limiters
-        headBaseOffsetX = sinAngle*headHeight/2.0
-        headBaseOffsetY = cosAngle*headHeight/2.0
+        headBaseOffsetX = sinAngle*self.arrowHeadHeight/2.0
+        headBaseOffsetY = cosAngle*self.arrowHeadHeight/2.0
 
         # calculate base limiters with the help of the offsets
         headUpX = headStartingPointX - headBaseOffsetX
@@ -231,7 +236,7 @@ class DrawElements:
         else: #arrowHead points left
             arrowHeadAngle = math.pi
 
-        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
+        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
 
 
     def drawDiagonalEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
@@ -259,7 +264,7 @@ class DrawElements:
             arrowHeadAngle = arrowHeadAngle + math.pi
 
         #print("arrowHeadAngle: " + str(arrowHeadAngle))
-        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, arrowHeadAngle)
+        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, arrowHeadAngle)
 
     def drawCurvedEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
         #set color
@@ -275,7 +280,7 @@ class DrawElements:
 
         control1X = x1Pos+self.curvedEdgeControlPointWidth
         control2X = x2Pos-self.curvedEdgeControlPointWidth
-        if (fromIndex-fromIndex)%2 == 0: #alternate between even and odd distances
+        if (fromIndex-toIndex)%2 == 0: #alternate between even and odd distances
             controlY = yPos+self.curvedEdgeControlPointHeight
             arrowHeadY = yPos+ (3.0*self.curvedEdgeControlPointHeight/4.0)
         else:
@@ -292,7 +297,7 @@ class DrawElements:
         else: #arrowHead points left
             arrowHeadAngle = math.pi
 
-        self.drawArrowHead(50,100,(x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
+        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
         '''
         height = 3/4 *(yPos+self.curvedEdgeControlPointHeight) + 1/4 *(yPos)
         self.cr.move_to(x1Pos,height)
@@ -302,7 +307,7 @@ class DrawElements:
         #3/4 Ymax + 1/4 Ymin
         '''
 
-    def drawNodeAndIdText(self, node: Node, iLayer: int) -> None:
+    def drawNodeAndRsText(self, node: Node, iLayer: int) -> None:
         #calculate position for node
         xPos = self.calculateHorizontalPositionOfNode(self.analyzer.nodeToIndexMap[node])
         yPos = self.calculateVerticalPositionOfNode(node, iLayer)
@@ -317,16 +322,16 @@ class DrawElements:
         self.cr.arc(xPos, yPos, self.nodeSize/2.0, 0, 2 * math.pi)
         self.cr.fill()
         #calculate position of the id text
-        yPosText = yPos+ ((RELATIVE_OFFSET_OF_ID_TEXTS+0.5)*self.nodeSize)
+        yPosText = yPos+ ((RELATIVE_OFFSET_OF_RS_TEXTS+0.5)*self.nodeSize)
         #set color for text
         self.cr.set_source_rgb(*TEXT_COLOR)
         #set font face
-        self.cr.set_font_size(self.idTextFontSize)
+        self.cr.set_font_size(self.rsTextFontSize)
         #place single id text
-        idText = node.rs.to01()
-        x_bearing, y_bearing, width, height = self.cr.text_extents(idText)[:4]
+        RsText = node.rs.to01()
+        x_bearing, y_bearing, width, height = self.cr.text_extents(RsText)[:4]
         self.cr.move_to(xPos - width / 2 - x_bearing, yPosText - height / 2 - y_bearing)
-        self.cr.show_text(idText)
+        self.cr.show_text(RsText)
 
     def drawLayerMarkings(self) ->None:             
 
@@ -405,19 +410,19 @@ class DrawElements:
 
     def placeNode(self, node:Node) ->None:
         # for each i-layer
-        for iLayer in range(self.idLength-1):
+        for iLayer in range(self.rsLength-1):
             # find rs
             rsText = node.rs.to01()
             #print("rsText: " + str(rsText))
             # find rs-layer
             rsLayer = self.calculateRsLayerOfNode(node, iLayer)
-            # call drawNodeAndIdText
-            self.drawNodeAndIdText(node, iLayer)
+            # call drawNodeAndRsText
+            self.drawNodeAndRsText(node, iLayer)
         
 
     def connectNode(self, node:Node) ->None:
         # for each i-layer
-        for iLayer in range(self.idLength-1):
+        for iLayer in range(self.rsLength-1):
             for neighbor in node.ranges[iLayer]:
                 # find out if you need to draw a horizontal, diagonal, or curved edge
                 if node.rs[:iLayer+1] != neighbor.rs[:iLayer+1]:
@@ -441,58 +446,16 @@ class DrawElements:
         # call drawCliqueGrouping
         pass
 
-    def placeExamples(self):
-        #place elements on canvas
-        # place vertical connection lines - I deem them unnecessary as we already have the ids displayed and the vertical alignment is visible
-        # place clique groupings
-        for i in range(self.idLength):  #iterate over the i layers
-            for rs in range(int(math.pow(2,i+1))):                 
-                if (i+rs)*rs % 20 < 6:
-                    start = i*rs % 13
-                    self.drawCliqueGrouping(start, start+3,i,rs)
-        # place edges
-        # draw horizontal edges
-        for i in range(self.idLength):  #iterate over the i layers
-            for rs in range(int(math.pow(2,i+1))):                 
-                if (i+rs)*rs % 20 > 6:
-                    start = i*rs % 13
-                    self.drawHorizontalEdge(start, (start+(i+rs)*rs)%15,i,rs)
-
-        # draw diagonal edges
-        self.drawDiagonalEdge(5,8,0,0,0,1)
-        self.drawDiagonalEdge(5,8,0,1,1,0)
-
-        # draw curved edges
-        self.drawCurvedEdge(3,8,0,0)
-        self.drawCurvedEdge(3,7,0,0)
-        self.drawCurvedEdge(3,6,0,0)
-        self.drawCurvedEdge(3,5,0,0)
-
-        self.drawCurvedEdge(3,5,0,1)
-        self.drawCurvedEdge(4,6,0,1)
-        self.drawCurvedEdge(4,7,0,1)
-        self.drawCurvedEdge(4,8,0,1)
-                
-        # place nodes and id texts
-        for x in range(self.amountNodes): #iterate over the horizontal nodes    
-            for i in range(self.idLength):  #iterate over the i layers
-                for rs in range(int(math.pow(2,i+1))):
-                    # calculate text
-                    text = '{0:b}'.format(x).zfill(self.idLength)
-                    self.drawNodeAndIdText(x,i,rs, text)
-
-        # place layer markings for i layers and rs layers
-        self.drawLayerMarkings()
-
     def drawSkipPlusGraph(self, widget, cr):
 
+        print("starting drawing")
         self.cr = cr
         self.widget = widget
 
         # get id length
-        self.idLength = 16
+        self.rsLength = self.nodes[0].rs.length()
         # get amount of nodes
-        self.amountNodes = 10#int(math.pow(2,self.idLength))
+        self.amountNodes = len(self.nodes)#int(math.pow(2,self.rsLength))
         # calculate sizes for individual elements
         self.calculateSizes()
 
@@ -511,6 +474,7 @@ class DrawElements:
         # draw layer markings
         self.drawLayerMarkings()
 
+        print("done with drawing")
         return False
 
     def redraw(self) -> None:
@@ -536,6 +500,10 @@ class DrawElements:
 
         return False
         '''
+
+    def renewNodes(self, nodes: list, analyzer):
+        self.nodes = nodes
+        self.analyzer = analyzer
     
 from twisted.application.internet import TimerService    
 class PyApp(Gtk.Window):
@@ -567,9 +535,6 @@ class PyApp(Gtk.Window):
         self.add(self.scrolledWindow)
         
         self.show_all()
-
-        timer = TimerService(1, self.drawElements.redraw())  # use some of your object's update method of course ;)
-        timer.startService()
     
     def expose(self):
         pass
@@ -589,3 +554,5 @@ class Visualizer():
 
     def redraw(self):
         self.pyApp.redraw()
+        #self.pyApp = PyApp(self.nodes, self.analyzer)
+        #Gtk.main()
