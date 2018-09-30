@@ -1,8 +1,15 @@
+import math
+import random
+from typing import List
+
+import cairo
 import gi
-gi.require_version('Gtk', '3.0')
-import cairo, math, random
-from gi.repository import Gtk
+from gi.repository import GLib, Gtk
+
 from vaud.core import Node
+from vaud.skipplus import RS_BIT_LENGTH, SkipNode, SkipNodeReference, prefix
+
+gi.require_version('Gtk', '3.0')
 
 #color constants
 NODE_COLOR_EVEN_RS = (0.266, 0.623, 0.835) #(0.407, 0.427, 0.650)
@@ -49,17 +56,52 @@ RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE = 0.5 #defines how tall an arrow head is
 RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is in relation to a node
 RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.5 #defines how far an arrow head will be offset from the middle of the edge
 
-class DrawElements:
 
-    def __init__(self, screenWidth, screenHeight, nodes: list, analyzer):
+class Analyzer():
+    """
+    A class for creating structured representations of skip plus graph data.
+    It offers the following public attributes:
+    `nodeToIndexMap`, `prefixToNodesMap` and `prefixes`.
+    """
+
+    def __init__(self, nodes: List[SkipNode]):
+        self.nodes = sorted(nodes) # sort nodes by id
+        # mapping nodes to their horizontal positional index
+        self.nodeToIndexMap = dict((n, index) for index, n in enumerate(self.nodes))
+        self.prefixToNodesMap = self._calculatePrefixToNodesMap()
+        # a list of all prefixes with actual nodes, sorted by prefix length and then by random string, ascending
+        self.prefixes = sorted(self.prefixToNodesMap.keys(), key=lambda rs: (len(rs), rs))
+        
+    def _calculatePrefixToNodesMap(self):
+        """
+        Returns a dict that maps an rs-prefix to lists of nodes with that rs-prefix.
+        Prefixes with empty node lists are not contained.
+        """
+        map = {}
+        for node in self.nodes:
+            rs = node.rs
+            # iterate over rs prefix length
+            for prefixLength in range(1, len(rs)):
+                rsPrefix = prefix(prefixLength, rs)
+                if rsPrefix in map:
+                    map[rsPrefix].append(node)
+                else:
+                    map[rsPrefix] = [node]
+        return map
+
+class DrawElements:
+    def __init__(self, screenWidth, screenHeight, nodes: list):
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         self.nodes = nodes
-        self.analyzer = analyzer
+        self.analyzer = Analyzer(nodes)
         self.updateCounter = 0
 
-    def calculateSizes(self) ->None:
-        '''calculates the absolute sizes of the elements drawn on screen bases on screen size and prior set constants'''
+    def calculateSizes(self) -> None:
+        '''
+        Calculates the absolute sizes of the elements drawn on screen bases
+        on screen size and prior set constants.
+        '''
         # how large is a node
         self.nodeSize = (self.screenWidth - ((4*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +2) *RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth)) / (self.amountNodes + ((self.amountNodes -1) * RELATIVE_DISTANCE_NODES_HORIZONTAL))
         self.nodeSize = max(RELATIVE_MINIMUM_NODE_SIZE*self.screenWidth, self.nodeSize)
@@ -99,11 +141,14 @@ class DrawElements:
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
         #print("self.canvasWidth " + str(self.canvasWidth))
-        
 
     def calculateFontSizeToFitWidth (self, fontface: str, allowedWidth: float, maxTextLength: int) -> int:
-        '''calculates the fontsize a textelement is allowed to have given its font and maximum text length.
-        At the moment this is not a good solution but the only one I found as you cannot directly calculate the fontsize over the textsize'''
+        '''
+        Calculates the fontsize a textelement is allowed to have
+        given its font and maximum text length.
+        At the moment this is not a good solution but the only one I found as
+        you cannot directly calculate the fontsize over the textsize.
+        '''
         self.cr.select_font_face(fontface)
         #set the font size to a huge value
         self.cr.set_font_size(10000)
@@ -115,9 +160,11 @@ class DrawElements:
 
         return newFontSize
 
-
     def calculateVerticalPositionOfNode(self, node:Node, iLayer: int) -> float:
-        '''Calculates the absolute vertical position of the center of a node based on its iLayer and rsLayer'''
+        '''
+        Calculates the absolute vertical position of the center of
+        a node based on its iLayer and rsLayer.
+        '''
         #return (self.iLayerDistance*(iLayer+1)) + (self.rsLayerDistance*(math.pow(2,iLayer+1)-2+rsLayer))
         
         distance = 0
@@ -164,8 +211,11 @@ class DrawElements:
         self.cr.fill()
 
     def drawCliqueGrouping(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
-        '''Draws a rounded rectangle encasing all nodes in the interval beginning with node1 and ending with node2.
-        Only uses one specific iLayer and rsLayer'''
+        '''
+        Draws a rounded rectangle encasing all nodes in the interval beginning
+        with node1 and ending with node2.
+        Only uses one specific iLayer and rsLayer
+        '''
         #set color
         self.cr.set_source_rgb(*CLIQUE_GROUPING_COLOR)
         yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
@@ -238,7 +288,6 @@ class DrawElements:
             arrowHeadAngle = math.pi
 
         self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
-
 
     def drawDiagonalEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
         ''' draws a diagonal edge from node from to node to'''
@@ -379,8 +428,7 @@ class DrawElements:
 
         # set the size request to make the drawing area scrollable
         self.widget.set_size_request(self.canvasWidth,self.canvasHeight)
-            
-
+    
     def calculateRsLayerOfNode (self, node:Node, iLayer: int) -> int:
         '''given a node and its iLayer this function calculates the rsLayer the node is located on'''
         return int(node.rs.to01()[:iLayer+1], 2)
@@ -409,9 +457,7 @@ class DrawElements:
                     # there is a node between left and right on the same rsLayer
                     return True
         return False
-        
-
-
+    
     def placeNode(self, node:Node) ->None:
         '''takes a node and draws it on the appropriate position on the skip+ graph'''
         # for each i-layer
@@ -519,11 +565,11 @@ class DrawElements:
         '''
         return True
 
-from gi.repository import GLib
 
-class PyApp(Gtk.Window):
-    def __init__(self, nodes: list, analyzer):
-        super(PyApp, self).__init__()
+class Visualizer(Gtk.Window):
+
+    def __init__(self, nodes: List[SkipNode]):
+        super(Visualizer, self).__init__()
 
         self.set_title("Skip+ Graph")
         self.scrolledWindow = Gtk.ScrolledWindow()
@@ -539,40 +585,15 @@ class PyApp(Gtk.Window):
         self.connect('delete-event', Gtk.main_quit)
         self.drawingArea=Gtk.DrawingArea()
 
-        self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes, analyzer)
+        self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
         self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)
         
-        
-        GLib.timeout_add(500, self.drawElements.redraw ) 
+        GLib.timeout_add(1000, self.drawElements.redraw)
 
         self.scrolledWindow.add(self.drawingArea)
         self.add(self.scrolledWindow)
         
         self.show_all()
-
     
     def expose(self):
         pass
-
-    '''
-    def redraw(self):
-        print("upper draw call")
-        self.drawElements.redraw()
-        #self.drawingArea.widgetQueueDraw()
-        return False
-    '''
-
-class Visualizer():
-
-    def __init__(self, nodes: list, analyzer):
-        #self.nodes = nodes
-        #self.analyzer = analyzer
-        self.pyApp = PyApp(nodes, analyzer)
-        Gtk.main()
-
-    '''
-    def redraw(self):
-        self.pyApp.redraw()
-        #self.pyApp = PyApp(self.nodes, self.analyzer)
-        #Gtk.main()
-    '''

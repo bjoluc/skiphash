@@ -7,9 +7,10 @@ import logging
 import sys
 
 from twisted.application.internet import TimerService
+from twisted.internet import gtk3reactor
+gtk3reactor.install() # If this does not happen right here, importing the reactor won't work.
 from twisted.internet import reactor
 
-from vaud.analyze import Analyzer
 from vaud.skipplus import SkipNode, SkipNodeFactory
 from vaud.view import Visualizer
 
@@ -27,7 +28,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 streamHandler.setFormatter(formatter)
 rootLogger.addHandler(streamHandler)
 
-# parse arguments
+# Parse arguments
 
 parser = argparse.ArgumentParser(prog='skiphash', description='A distributed hash table based on a skip plus overlay network')
 parser.add_argument('-n', '--nodes', type=int, default=1,
@@ -40,8 +41,7 @@ parser.add_argument('-v', '--visualize', action='store_true',
                     help='Runs a graphic user interface with a visualization of the skip graph formed by the local nodes.')
 args = parser.parse_args()
 
-# setup nodes
-
+# Setup nodes
 if not args.connect:
     factory = SkipNodeFactory(args.port)
 else:
@@ -51,47 +51,9 @@ else:
 for _ in range(args.nodes):
     factory.newNode()
 
-# setup visualization
-visualize = args.visualize
+# Setup visualization
+if args.visualize:
+    Visualizer(factory.nodes)
 
-# Here we go - those are your nodes! ;)
-nodes = sorted(factory.nodes)
-#nodes = factory.nodes
-
-# Some examples:
-myNode = nodes[0]
-
-myNodeRs = myNode.rs # Subtype of https://pypi.org/project/bitarray/
-myNodeId = myNode.id # IP port tuple like "1.2.3.4:1234"
-# do not compare ids, compare references (myNode.reference)
-# if you need one of those
-myNodeIp = myNode.host
-myNodePort = myNode.port
-
-# Set of all neighbors (as NodeReferences)
-neighbors = myNode.N
-
-# Set of Skip+ neighbors
-stableNeighbors = myNode.nodesInRanges
-
-# Dict of ranges
-level0Range = myNode.ranges[0] # set of NodeReferences in range 0
-
-# Lots of space for your stuff :P
-print("now my stuff starts")
-
-analyzer = Analyzer(nodes)
-def startVisualizer():
-    Visualizer(nodes, analyzer)
-reactor.callFromThread(startVisualizer)
-
-'''
-# ah, if you need a timer:
-def updateView():
-    pass
-
-timer = TimerService(1, v.redraw)  # use some of your object's update method of course ;)
-timer.startService()
-'''
-# Starting the Twisted reactor, runs the nodes
+# Starting the Twisted reactor, runs everything
 reactor.run()
