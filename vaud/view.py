@@ -37,8 +37,8 @@ RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT = 0.2 #defines the empty space width lef
 RELATIVE_WIDTH_OF_RS_TEXTS = 3 #defines how wide the id texts are in relation to the size of a node
 RELATIVE_OFFSET_OF_RS_TEXTS = 0.5 #defines how far below the id text will be placed below a node in relation to the size of a node
 
-RELATIVE_RS_LAYER_HEIGHT_TO_NODE_SIZE = 3.6 # defines the height of the rs layer as defined on S.167 relative to the node size. Unlike the slide, in this representation all rs layers will be quidistant in the same i layer
-RELATIVE_DISTANCE_BETWEEN_I_LAYERS_TO_NODE_SIZE = 5.0 #defines the distance between the i layers as defined on S.167 relative to the node size.
+RELATIVE_RS_LAYER_HEIGHT_TO_NODE_SIZE = 5.9 # defines the height of the rs layer as defined on S.167 relative to the node size. Unlike the slide, in this representation all rs layers will be quidistant in the same i layer
+RELATIVE_DISTANCE_BETWEEN_I_LAYERS_TO_NODE_SIZE = 7.0 #defines the distance between the i layers as defined on S.167 relative to the node size.
 
 RELATIVE_CLIQUE_DISTANCE_SIDE = 0.85 #defines the distance from the side end of the node to the sides of the clique grouping relative to the node size
 RELATIVE_CLIQUE_DISTANCE_ABOVE = 0.3 #defines the distance from the upper end of the node to the upper side of the clique grouping relative to the node size
@@ -49,12 +49,12 @@ RELATIVE_HORIZONTAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.13 #defines how thick an hor
 RELATIVE_DIAGONAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.1 #defines how thick an diagonal edge is relative to the node size
 RELATIVE_CURVED_EDGE_THICKNESS_TO_NODE_SIZE = 0.08 #defines how thick an curved edge is relative to the node size
 
-RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE = 0.6 #defines the height a curved edge can take in relation to the rs layer distance
+RELATIVE_CURVED_EDGE_HEIGHT_TO_RS_LAYER_DISTANCE = 0.7 #defines the height a curved edge can take in relation to the rs layer distance
 RELATIVE_CURVED_EDGE_WIDTH_TO_HEIGHT = 0.1 #defines how far away in horizontal direction the control points will be placed for a curved edge in relation to the height of the control point. Lower values (also <0) make the curve harsher
 
 RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE = 0.5 #defines how tall an arrow head is in relation to a node
 RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is in relation to a node
-RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.5 #defines how far an arrow head will be offset from the middle of the edge
+RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.4 #defines how far an arrow head will be offset from the middle of the edge
 
 
 # time constants
@@ -258,7 +258,7 @@ class ElementDrawer:
         self.cr.line_to(headDownX,headDownY)
         self.cr.fill()
 
-    def drawHorizontalEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
+    def drawHorizontalEdge(self, fromNode:Node, toNode:Node, iLayer: int, isBidirectional:bool) -> None:
         ''' draws a horizontal edge from node fromXPos to node toXPos on the specified iLayer and rsLayer'''
         #set color
         self.cr.set_source_rgb(*EDGE_HORIZONTAL_COLOR)
@@ -273,18 +273,21 @@ class ElementDrawer:
         x2Pos = self.calculateHorizontalPositionOfNode(toIndex)
         yPos = self.calculateVerticalPositionOfNode(fromNode, iLayer)
 
-        if fromIndex<toIndex: #arrowhead points right
-            arrowHeadAngle = 0
-        else: #arrowHead points left
-            arrowHeadAngle = math.pi
-
         #draw
         self.cr.move_to(x1Pos,yPos)
         self.cr.line_to(x2Pos,yPos)
         self.cr.stroke()
-        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
 
-    def drawDiagonalEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
+        if not isBidirectional:
+            if fromIndex<toIndex: #arrowhead points right
+                arrowHeadAngle = 0
+            else: #arrowHead points left
+                arrowHeadAngle = math.pi
+
+            self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
+
+
+    def drawDiagonalEdge(self, fromNode:Node, toNode:Node, iLayer: int, isBidirectional:bool) -> None:
         ''' draws a diagonal edge from fromNode from to toNode'''
         #set color
         self.cr.set_source_rgb(*EDGE_DIAGONAL_COLOR)
@@ -302,15 +305,17 @@ class ElementDrawer:
         self.cr.line_to(x2Pos,y2Pos)
         self.cr.stroke()
 
-        # calculate the arrow head angle. Multiply by -1 because GTK uses DirectX coordinates
-        arrowHeadAngle = -math.atan((y2Pos-y1Pos)/(x2Pos-x1Pos)) 
 
-        if fromIndex>toIndex: #arrowhead points left. Add pi. Flip it 180°
-            arrowHeadAngle = arrowHeadAngle + math.pi
+        if not isBidirectional:
+            # calculate the arrow head angle. Multiply by -1 because GTK uses DirectX coordinates
+            arrowHeadAngle = -math.atan((y2Pos-y1Pos)/(x2Pos-x1Pos)) 
 
-        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, arrowHeadAngle)
+            if fromIndex>toIndex: #arrowhead points left. Add pi. Flip it 180°
+                arrowHeadAngle = arrowHeadAngle + math.pi
 
-    def drawCurvedEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
+            self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, arrowHeadAngle)
+
+    def drawCurvedEdge(self, fromNode:Node, toNode:Node, iLayer: int, isBidirectional:bool) -> None:
         ''' draws a bezier curve from fromNode from to toNode'''
         #set color
         self.cr.set_source_rgb(*EDGE_CURVED_COLOR)
@@ -319,8 +324,10 @@ class ElementDrawer:
         # calculate positions
         fromIndex = self.getIndexOfNode(fromNode)
         toIndex = self.getIndexOfNode(toNode)
-        x1Pos = self.calculateHorizontalPositionOfNode(fromIndex)
-        x2Pos = self.calculateHorizontalPositionOfNode(toIndex)
+        leftIndex = min(fromIndex, toIndex)
+        rightIndex = max(fromIndex, toIndex)
+        x1Pos = self.calculateHorizontalPositionOfNode(leftIndex)
+        x2Pos = self.calculateHorizontalPositionOfNode(rightIndex)
         yPos = self.calculateVerticalPositionOfNode(fromNode, iLayer)
 
         control1X = x1Pos+self.curvedEdgeControlPointWidth
@@ -341,7 +348,8 @@ class ElementDrawer:
         self.cr.move_to(x1Pos,yPos)
         self.cr.curve_to(control1X,controlY,  control2X,controlY,  x2Pos,yPos)
         self.cr.stroke()
-        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
+        if not isBidirectional:
+            self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
 
     def drawNodeAndRsText(self, node: Node, iLayer: int) -> None:
         #calculate position for node
@@ -453,16 +461,21 @@ class ElementDrawer:
         # for each i-layer
         for iLayer in range(self.rsLength-1):
             for neighbor in node.ranges[iLayer]:
-                # find out if you need to draw a horizontal, diagonal, or curved edge
-                if node.rs[:iLayer+1] != neighbor.rs[:iLayer+1]:
-                    #draw a diagonal edge
-                    self.drawDiagonalEdge(node, neighbor, iLayer)
-                elif self.checkForIntermediateNodes(node,neighbor,node.rs[:iLayer+1]):
-                    #draw a curved edge
-                    self.drawCurvedEdge(node, neighbor, iLayer)
-                else:
-                    #draw a horizontal edge
-                    self.drawHorizontalEdge(node, neighbor, iLayer)
+                isBidirectional = False
+                # check if that neighbor also has a connection to node.
+                # if so, only draw if node<neighbor. This makes for an ordering
+                #isBidirectional = node in neighbor.ranges[iLayer]
+                if not isBidirectional or ( isBidirectional and self.getIndexOfNode(node) < self.getIndexOfNode(neighbor)):                    
+                    # find out if you need to draw a horizontal, diagonal, or curved edge
+                    if node.rs[:iLayer+1] != neighbor.rs[:iLayer+1]:
+                        #draw a diagonal edge
+                        self.drawDiagonalEdge(node, neighbor, iLayer, isBidirectional)
+                    elif self.checkForIntermediateNodes(node,neighbor,node.rs[:iLayer+1]):
+                        #draw a curved edge
+                        self.drawCurvedEdge(node, neighbor, iLayer, isBidirectional)
+                    else:
+                        #draw a horizontal edge
+                        self.drawHorizontalEdge(node, neighbor, iLayer, isBidirectional)
 
     def groupNodes(self, nodes: list) ->None:
         # find out which cliques exist
