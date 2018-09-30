@@ -11,7 +11,7 @@ from vaud.core import (CopyableBitArray, Node, NodeFactory, NodeReference,
                        remoteMethod)
 
 # Define the length of the rs bit string
-RS_BYTE_LENGTH = 2
+RS_BYTE_LENGTH = 4
 RS_BIT_LENGTH = RS_BYTE_LENGTH * 8
 
 lowest = PseudoNodeReference("lowest")
@@ -225,9 +225,9 @@ class SkipNode(Node):
                 if len(side2) > 0:
                     closestRange2Node = side2[-1] # last node in right resp. left nodes
                     for v in side1:
-                        #if closestRange2Node in skipRange(i, v, self.N):
+                        if closestRange2Node in skipRange(i, v, self.N):
                             # this node thinks that closestRange2Node is in v's range
-                        v.linearise(closestRange2Node)
+                            v.linearise(closestRange2Node)
     
     @remoteMethod
     def linearise(self, u: SkipNodeReference):
