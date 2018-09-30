@@ -10,8 +10,10 @@ from twisted.application.internet import TimerService
 from twisted.internet import defer, error, reactor
 from twisted.spread import flavors, pb
 
-from cityhash import CityHash64
+from cityhash import CityHash64 as CityHash
 from vaud import thisHost
+
+ID_BIT_LENGTH = 64
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def projectOntoUnitInterval(input: int, inputBitLength: int) -> float:
     """
     Projects any integer consisting of inputBitLength bits onto the [0,1) interval.
     """
-    return 2**(-inputBitLength) * input
+    return input / 2**(inputBitLength)
 
 def randomBitArray(byteSize):
     byteString = bytes(random.getrandbits(8) for _ in range(byteSize))
@@ -77,7 +79,7 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
         self.frombytes(state)
     
     def __hash__(self):
-        return CityHash64(self.to01())
+        return CityHash(self.to01())
     
     def __int__(self):
         bytes = self.tobytes()
@@ -97,27 +99,27 @@ pb.setUnjellyableForClass('vaud.core.CopyableBitArray', CopyableBitArray)
 @total_ordering
 class ComparableById:
     """
-    A base class providing comparison methods for objects with 64 bit integer ids
+    A base class providing comparison methods for objects with ID_BIT_LENGTH-bit-long integer ids
     """
 
     def __eq__(self, other):
         if isinstance(other, float):
-            return projectOntoUnitInterval(self.id, 64) == other
+            return self.unitId == other
         if isinstance(other, ComparableById):
             return self.id == other.id
         raise NotImplementedError()
 
     def __lt__(self, other):
         if isinstance(other, float):
-            return projectOntoUnitInterval(self.id, 64) < other
+            return self.unitId < other
         if isinstance(other, ComparableById):
             return self.id < other.id
         raise NotImplementedError()
     
     @property
     def unitId(self):
-        """The object's 64 bit id projected onto the unit interval"""
-        return projectOntoUnitInterval(self.id, 64)
+        """The object's integer id projected onto the unit interval"""
+        return projectOntoUnitInterval(self.id, ID_BIT_LENGTH)
 
 class NodeReference(ComparableById, flavors.Copyable, flavors.RemoteCopy):
     """
@@ -127,8 +129,9 @@ class NodeReference(ComparableById, flavors.Copyable, flavors.RemoteCopy):
     Also, remote node methods can be invoked directly on a NodeReference
     and will be executed by the referenced node, returning a (maybe) deferred for
     the remote method's result.
-    Each NodeReference object has a unique uniformly random
-    64 bit id which is a hash of its host and port.
+    As NodeReference is a subclass of ComparableById,
+    each NodeReference object has a unique uniformly random
+    integer id which is a hash of its host and port.
     Comparing NodeReference objects will compare their ids.
     """
 
@@ -146,7 +149,7 @@ class NodeReference(ComparableById, flavors.Copyable, flavors.RemoteCopy):
     
     def postInit(self):
         self._remoteReference = None
-        self._id = CityHash64("{}:{}".format(self.host, self.port))
+        self._id = CityHash("{}:{}".format(self.host, self.port))
     
     def __getattr__(self, attrName: str):
         """
@@ -261,7 +264,7 @@ class PseudoNodeReference(NodeReference):
     """
 
     def __init__(self, value):
-        valueMapping = {"lowest": -1, "highest": 2**64 + 1}
+        valueMapping = {"lowest": -1, "highest": 2**ID_BIT_LENGTH + 1}
         if value not in valueMapping:
             raise ValueError(("Only 'lowest' or 'highest' are allowed for initializing a PseudoNodeReference. "
                                 "'{}' given.").format(value))
