@@ -6,7 +6,7 @@ import cairo
 import gi
 from gi.repository import GLib, Gtk
 
-from vaud.core import Node
+from vaud.core import Node, NodeFactory
 from vaud.skipplus import RS_BIT_LENGTH, SkipNode, SkipNodeReference, prefix
 
 gi.require_version('Gtk', '3.0')
@@ -93,11 +93,12 @@ class Analyzer():
         return map
 
 class ElementDrawer:
-    def __init__(self, screenWidth, screenHeight, nodes: list):
+    def __init__(self, screenWidth, screenHeight, factory: NodeFactory):
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
-        self.nodes = nodes
-        self.analyzer = Analyzer(nodes)
+        self.nodeFactory = factory
+        self.nodes = factory.nodes
+        self.analyzer = Analyzer(self.nodes)
 
     def calculateSizes(self) -> None:
         '''
@@ -522,7 +523,7 @@ class ElementDrawer:
 
 class Visualizer(Gtk.Window):
 
-    def __init__(self, nodes: List[SkipNode]):
+    def __init__(self, factory: NodeFactory):
         # Call Window constructor
         super(Visualizer, self).__init__()
         
@@ -548,7 +549,7 @@ class Visualizer(Gtk.Window):
         # build a drawing area
         self.drawingArea=Gtk.DrawingArea()
         # make  a new instance of elementDrawer with appropriate parameters
-        self.elementDrawer = ElementDrawer(self.screenWidth, self.screenHeight, nodes)
+        self.elementDrawer = ElementDrawer(self.screenWidth, self.screenHeight, factory)
         # connect the draw event to the drawSkipPlusGraph method
         self.drawingArea.connect('draw', self.elementDrawer.drawSkipPlusGraph)        
         # start timer for draw refreshes

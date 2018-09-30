@@ -53,7 +53,7 @@ for _ in range(args.nodes):
 
 # Setup visualization
 if args.visualize:
-    Visualizer(factory.nodes)
+    Visualizer(factory)
 
 # Starting the Twisted reactor, runs everything
 reactor.run()
