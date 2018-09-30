@@ -4,7 +4,7 @@ from twisted.internet import defer
 from twisted.spread import flavors, pb
 
 import vaud.skipplus as skip
-from cityhash import CityHash64
+from cityhash import CityHash128
 from vaud.core import projectOntoUnitInterval, remoteMethod
 
 
@@ -27,15 +27,15 @@ class Entry(flavors.Copyable, flavors.RemoteCopy):
     
     def keyHash(self):
         """
-        Returns a 64 bit int, produced by hashing the key with CityHash64.
+        Returns a 128 bit int, produced by hashing the key with CityHash128.
         """
-        return CityHash64(self.key)
+        return CityHash128(self.key)
     
     def unitKeyHash(self):
         """
         Returns the projection of keyHash onto the [0,1) interval.
         """
-        return projectOntoUnitInterval(self.keyHash(), 64)
+        return projectOntoUnitInterval(self.keyHash(), 128)
 
 pb.setUnjellyableForClass('vaud.distrhash.Entry', Entry)
     
@@ -106,13 +106,13 @@ class HashNode(skip.SkipNode):
             returnValue = yield v.search(d, operationName)
             return returnValue
         
-        unitId = projectOntoUnitInterval(self.id, 64) # our position in the [o,1) interval
         unitKey = d.unitKeyHash()
 
-        if self.pred is skip.lowest and unitKey < unitId:
+        # our position in the [o,1) interval is self.unitId
+        if self.pred is skip.lowest and unitKey < self.unitId:
             # We do not have cyclic edges in this implementation, so we have to process the request
             return processLocally()
-        if self.succ is skip.highest and unitKey > unitId:
+        if self.succ is skip.highest and unitKey > self.unitId:
             # The entry is ours
             return processLocally()
         
@@ -126,7 +126,7 @@ class HashNode(skip.SkipNode):
                 nextNode = max(x for x in self.N if x < unitKey)
             return delegateTo(nextNode)
         else:
-            if unitKey < unitId:
+            if unitKey < self.unitId:
                 return delegateTo(self.pred) # entry belongs to our predecessor
             else:
                 return processLocally() # entry belongs to us
