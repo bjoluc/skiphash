@@ -135,12 +135,14 @@ def commonPrefixLength(v: bitarray, w: bitarray) -> int:
         i += 1
     return i
 
-def longestCommonPrefixNode(w: SkipNodeReference, W: Set[SkipNodeReference]) -> SkipNodeReference:
+def longestCommonPrefixNodes(w: SkipNodeReference, W: Set[SkipNodeReference]) -> Set[SkipNodeReference]:
     """
-    Returns the SkipNodeReference of the node in W that has
+    Returns a set of SkipNodeReferences of the nodes in W that have
     the longest common random bit string prefix with w.
     """
-    return max(W, key=lambda x: commonPrefixLength(x.rs, w.rs))
+    longestCommonPrefixLength = max(map(lambda x: commonPrefixLength(x.rs, w.rs), W))
+    longestCommonPrefix = prefix(longestCommonPrefixLength, w.rs)
+    return set(filter(lambda x: prefix(longestCommonPrefixLength, x.rs) == longestCommonPrefix, W))
 
 class SkipNode(Node):
     
@@ -183,7 +185,7 @@ class SkipNode(Node):
         self.nodesInRanges = nodesInRanges
     
     def timeout(self):
-        # Introducing us to all of our neighbors - not mentioned on the slides.
+        # Introducing this node to all of our neighbors - not mentioned on the slides.
         # Still seems to be necessary in order to prevent weak connectedness.
         for n in self.N:
             n.linearise(self.reference)
@@ -216,8 +218,8 @@ class SkipNode(Node):
                     r[-1].linearise(self.reference)
         
             # Part b: Bridging (as on slide 170)
-            # - left nodes to first right node
-            # - right nodes to first left node
+            # - left nodes to closest right node
+            # - right nodes to closest left node
 
             for side1, side2 in ((leftNodes, rightNodes), (rightNodes, leftNodes)):
                 if len(side2) > 0:
@@ -243,7 +245,9 @@ class SkipNode(Node):
                 self.N = self.nodesInRanges # only keep the skip+ neighbors in our neighborhood
                 # delegate the undesirable nodes
                 for w in undesirableNodes:
-                    delegationDestination = longestCommonPrefixNode(w, self.N)
+                    # use the longestCommonPrefixNodes with the minimum id difference (the "closest" ones)
+                    nodes = longestCommonPrefixNodes(w, self.N)
+                    delegationDestination = min(nodes, key=lambda x: abs(x.id - self.id))
                     delegationDestination.linearise(w)
 
 class SkipNodeFactory(NodeFactory):
