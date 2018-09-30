@@ -360,16 +360,6 @@ class Node(pb.Root, ComparableById):
         # raising an attribute error for all other requests
         raise AttributeError("No such member: '{}'".format(attrName))
     
-    def __eq__(self, other):
-        if not isinstance(other, (Node, NodeReference)):
-            raise NotImplementedError()
-        return self.id == other.id
-
-    def __lt__(self, other):
-        if not isinstance(other, (Node, NodeReference)):
-            raise NotImplementedError()
-        return self.id < other.id
-    
     def __hash__(self):
         return hash(self.id)
     

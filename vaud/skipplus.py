@@ -186,7 +186,7 @@ class SkipNode(Node):
     
     def timeout(self):
         # Introducing this node to all of our neighbors - not mentioned on the slides.
-        # Still seems to be necessary in order to prevent weak connectedness.
+        # Still seems to be necessary in order to guarantee strong connectedness.
         for n in self.N:
             n.linearise(self.reference)
 
@@ -225,9 +225,9 @@ class SkipNode(Node):
                 if len(side2) > 0:
                     closestRange2Node = side2[-1] # last node in right resp. left nodes
                     for v in side1:
-                        if closestRange2Node in skipRange(i, v, self.N):
+                        #if closestRange2Node in skipRange(i, v, self.N):
                             # this node thinks that closestRange2Node is in v's range
-                            v.linearise(closestRange2Node)
+                        v.linearise(closestRange2Node)
     
     @remoteMethod
     def linearise(self, u: SkipNodeReference):
