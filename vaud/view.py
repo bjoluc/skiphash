@@ -17,13 +17,14 @@ NODE_COLOR_ODD_RS = (0.678, 0.729, 0.760) #(0.407, 0.427, 0.650)
 EDGE_DIAGONAL_COLOR = (0.423, 0.278, 0.341) #(0.090, 0.101, 0.250)
 EDGE_HORIZONTAL_COLOR = (0.772, 0.125, 0.415) #(0.090, 0.101, 0.250)
 EDGE_CURVED_COLOR = (0.658, 0.243, 0.376) #(0.090, 0.101, 0.250)
-TEXT_EMBOSS_COLOR = (0.250, 0.250, 0.250)
-TEXT_COLOR = (0.858, 0.858, 0.858) # (0.121, 0.121, 0.121)
+TEXT_EMBOSS_COLOR = (0.2, 0.2, 0.2)#(0.250, 0.250, 0.250)
+LAYER_TEXT_COLOR = (0.858, 0.858, 0.858) # (0.121, 0.121, 0.121)
+RS_TEXT_COLOR = (0.741, 0.741, 0.741) # (0.121, 0.121, 0.121)
 CONNECTION_LINES_COLOR = (0.368, 0.368, 0.368)
 BACKGROUND_COLOR =  (0.090, 0.090, 0.090) #(0.858, 0.858, 0.858)
 
 #font constants
-RS_TEXT_FONT = "Georgia"
+RS_TEXT_FONT = "Georgia_bold"
 LAYER_TEXT_FONT = "Georgia"
 
 #positioning and size constants
@@ -56,7 +57,7 @@ RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE = 0.5 #defines how tall an arrow head is
 RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is in relation to a node
 RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.4 #defines how far an arrow head will be offset from the middle of the edge
 
-RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT = 0.8 #defines how much distance there will be between the outer rim of the text emboss and the text itself vertically and horizontally
+RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT = 0.7 #defines how much distance there will be between the outer rim of the text emboss and the text itself vertically and horizontally
 
 # time constants
 REFRESH_INTERVAL_TIME = 1000 # defines how many milliseconds will be between each refresh
@@ -140,8 +141,8 @@ class ElementDrawer:
         self.rsTextFontSize, heightOfRsText = self.calculateFontSizeToFitWidth(RS_TEXT_FONT, self.widthOfRsText, self.rsLength)  
         # how tall and wide is a text emboss
         textEmbossSizeOffset = RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT*heightOfRsText
-        self.textEmbossWidthRadius = (self.widthOfRsText+textEmbossSizeOffset)/2.0
-        self.textEmbossHeightRadius = (heightOfRsText+textEmbossSizeOffset)/2.0
+        self.textEmbossWidthRadius = (self.widthOfRsText)/2.0+textEmbossSizeOffset
+        self.textEmbossHeightRadius = (heightOfRsText/2.0)+textEmbossSizeOffset
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
 
@@ -220,10 +221,10 @@ class ElementDrawer:
         #set color
         self.cr.set_source_rgb(*TEXT_EMBOSS_COLOR)
         
-        upperLeftX = textPosX-self.cliqueDistanceSide -(0.5*self.nodeSize)
-        upperLeftY = textPosY-self.cliqueDistanceAbove -(0.5*self.nodeSize)
-        lowerRightX = textPosX+self.cliqueDistanceSide +(0.5*self.nodeSize)
-        lowerRightY = textPosY+self.cliqueDistanceBelow +(0.5*self.nodeSize)
+        upperLeftX = textPosX-self.textEmbossWidthRadius
+        upperLeftY = textPosY-self.textEmbossHeightRadius
+        lowerRightX = textPosX+self.textEmbossWidthRadius
+        lowerRightY = textPosY+self.textEmbossHeightRadius
 
         self.drawRounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
         
@@ -369,9 +370,9 @@ class ElementDrawer:
         yPosText = yPos+ ((RELATIVE_OFFSET_OF_RS_TEXTS+0.5)*self.nodeSize)
         #calculate control points for text emboss
         #place round rectangle to encase the text
-        #self.drawTextEmboss()
+        self.drawTextEmboss(xPos, yPosText)
         #set color for text
-        self.cr.set_source_rgb(*TEXT_COLOR)
+        self.cr.set_source_rgb(*RS_TEXT_COLOR)
         #set font face
         self.cr.set_font_size(self.rsTextFontSize)
         #place single id text
@@ -383,7 +384,7 @@ class ElementDrawer:
     def drawLayerMarkings(self) ->None:
         '''draws all side texts for the iLayers and rsLayers for the'''
         #set color
-        self.cr.set_source_rgb(*TEXT_COLOR)
+        self.cr.set_source_rgb(*LAYER_TEXT_COLOR)
         #set correct font size
         self.cr.set_font_size(self.levelTextFontSize)
 
