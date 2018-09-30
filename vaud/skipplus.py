@@ -11,7 +11,7 @@ from vaud.core import (CopyableBitArray, Node, NodeFactory, NodeReference,
                        remoteMethod)
 
 # Define the length of the rs bit string
-RS_BYTE_LENGTH = 4
+RS_BYTE_LENGTH = 2
 RS_BIT_LENGTH = RS_BYTE_LENGTH * 8
 
 lowest = PseudoNodeReference("lowest")
