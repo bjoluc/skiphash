@@ -17,7 +17,7 @@ NODE_COLOR_ODD_RS = (0.678, 0.729, 0.760) #(0.407, 0.427, 0.650)
 EDGE_DIAGONAL_COLOR = (0.423, 0.278, 0.341) #(0.090, 0.101, 0.250)
 EDGE_HORIZONTAL_COLOR = (0.772, 0.125, 0.415) #(0.090, 0.101, 0.250)
 EDGE_CURVED_COLOR = (0.658, 0.243, 0.376) #(0.090, 0.101, 0.250)
-CLIQUE_GROUPING_COLOR = (0.250, 0.250, 0.250)
+TEXT_EMBOSS_COLOR = (0.250, 0.250, 0.250)
 TEXT_COLOR = (0.858, 0.858, 0.858) # (0.121, 0.121, 0.121)
 CONNECTION_LINES_COLOR = (0.368, 0.368, 0.368)
 BACKGROUND_COLOR =  (0.090, 0.090, 0.090) #(0.858, 0.858, 0.858)
@@ -56,6 +56,7 @@ RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE = 0.5 #defines how tall an arrow head is
 RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is in relation to a node
 RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.4 #defines how far an arrow head will be offset from the middle of the edge
 
+RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT = 0.8 #defines how much distance there will be between the outer rim of the text emboss and the text itself vertically and horizontally
 
 # time constants
 REFRESH_INTERVAL_TIME = 1000 # defines how many milliseconds will be between each refresh
@@ -133,10 +134,14 @@ class ElementDrawer:
         # how large is a level marking - currently using a BAD solution
         self.levelMarkingMaxWidth = RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth
         self.sideWidth = (2*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +1)*self.levelMarkingMaxWidth
-        self.levelTextFontSize = self.calculateFontSizeToFitWidth(LAYER_TEXT_FONT, self.levelMarkingMaxWidth, self.rsLength+6) #there are 6 additional characters: rs=...  
+        self.levelTextFontSize = self.calculateFontSizeToFitWidth(LAYER_TEXT_FONT, self.levelMarkingMaxWidth, self.rsLength+6)[0] #there are 6 additional characters: rs=...  
         # how large is the id text - currently using a BAD solution
         self.widthOfRsText = RELATIVE_WIDTH_OF_RS_TEXTS*self.nodeSize  
-        self.rsTextFontSize = self.calculateFontSizeToFitWidth(RS_TEXT_FONT, self.widthOfRsText, self.rsLength)  
+        self.rsTextFontSize, heightOfRsText = self.calculateFontSizeToFitWidth(RS_TEXT_FONT, self.widthOfRsText, self.rsLength)  
+        # how tall and wide is a text emboss
+        textEmbossSizeOffset = RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT*heightOfRsText
+        self.textEmbossWidthRadius = (self.widthOfRsText+textEmbossSizeOffset)/2.0
+        self.textEmbossHeightRadius = (heightOfRsText+textEmbossSizeOffset)/2.0
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
 
@@ -151,12 +156,12 @@ class ElementDrawer:
         #set the font size to a huge value
         self.cr.set_font_size(10000)
         # get the extents if the font was scaled by 10000
-        width = (self.cr.text_extents("0"*maxTextLength))[2]
+        width, height = (self.cr.text_extents("0"*maxTextLength))[2:4]
         # calculate scale factor
         scaleFactor : float = allowedWidth/width
         newFontSize = 10000*scaleFactor
 
-        return newFontSize
+        return newFontSize, height*scaleFactor
 
     def calculateVerticalPositionOfNode(self, node:Node, iLayer: int) -> float:
         '''
@@ -193,7 +198,7 @@ class ElementDrawer:
         '''Calculates the absolute horizontal position of a node based on its index of all nodes'''
         return self.sideWidth+ self.distanceNodesHorizontal * nodeXPos
 
-    def draw_rounded(self, upperLeftX: float, upperLeftY: float, lowerRightX: float, lowerRightY: float) -> None:
+    def drawRounded(self, upperLeftX: float, upperLeftY: float, lowerRightX: float, lowerRightY: float) -> None:
         """ draws rectangles with rounded (circular arc) corners """
         aspect = 1.0
         cornerRadius = (lowerRightY-upperLeftY)*RELATIVE_CORNER_RADIUS_OF_CLIQUES_TO_HEIGHT
@@ -208,24 +213,19 @@ class ElementDrawer:
         self.cr.close_path()
         self.cr.fill()
 
-    def drawCliqueGrouping(self, node1XPos: int, node2XPos: int, iLayer: int, rsLayer: int) -> None:
+    def drawTextEmboss(self, textPosX:float, textPosY:float) -> None:
         '''
-        Draws a rounded rectangle encasing all nodes in the interval beginning
-        with node1 and ending with node2.
-        Only uses one specific iLayer and rsLayer
+        Draws a rounded rectangle encasing an rs text
         '''
         #set color
-        self.cr.set_source_rgb(*CLIQUE_GROUPING_COLOR)
-        yPos = self.calculateVerticalPositionOfNode(iLayer, rsLayer)
-        #print("for iLayer " + str(iLayer) + " and rsLayer " + str(rsLayer) + " it's " + str(yPos))
-        x1Pos = self.calculateHorizontalPositionOfNode(node1XPos)
-        x2Pos = self.calculateHorizontalPositionOfNode(node2XPos)
-        upperLeftX = x1Pos-self.cliqueDistanceSide -(0.5*self.nodeSize)
-        upperLeftY = yPos-self.cliqueDistanceAbove -(0.5*self.nodeSize)
-        lowerRightX = x2Pos+self.cliqueDistanceSide +(0.5*self.nodeSize)
-        lowerRightY = yPos+self.cliqueDistanceBelow +(0.5*self.nodeSize)
+        self.cr.set_source_rgb(*TEXT_EMBOSS_COLOR)
+        
+        upperLeftX = textPosX-self.cliqueDistanceSide -(0.5*self.nodeSize)
+        upperLeftY = textPosY-self.cliqueDistanceAbove -(0.5*self.nodeSize)
+        lowerRightX = textPosX+self.cliqueDistanceSide +(0.5*self.nodeSize)
+        lowerRightY = textPosY+self.cliqueDistanceBelow +(0.5*self.nodeSize)
 
-        self.draw_rounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
+        self.drawRounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
         
     def drawArrowHead(self, edgeMedianX:float, edgeMedianY:float, edgeMedianAngle:float) -> None:
         ''' draws a triangle symbolizing an arrow head located on an edge, given the median point of the edge and its angle at that point'''
@@ -367,6 +367,9 @@ class ElementDrawer:
         self.cr.fill()
         #calculate position of the id text
         yPosText = yPos+ ((RELATIVE_OFFSET_OF_RS_TEXTS+0.5)*self.nodeSize)
+        #calculate control points for text emboss
+        #place round rectangle to encase the text
+        #self.drawTextEmboss()
         #set color for text
         self.cr.set_source_rgb(*TEXT_COLOR)
         #set font face
@@ -462,10 +465,11 @@ class ElementDrawer:
         # for each i-layer
         for iLayer in range(self.rsLength-1):
             for neighbor in node.ranges[iLayer]:
-                isBidirectional = False
+                #isBidirectional = False
                 # check if that neighbor also has a connection to node.
                 # if so, only draw if node<neighbor. This makes for an ordering
-                #isBidirectional = node in neighbor.ranges[iLayer]
+                neighborNode = self.nodeFactory.getLocalNodeByReference(neighbor)
+                isBidirectional = node in neighborNode.ranges[iLayer]
                 if not isBidirectional or ( isBidirectional and self.getIndexOfNode(node) < self.getIndexOfNode(neighbor)):                    
                     # find out if you need to draw a horizontal, diagonal, or curved edge
                     if node.rs[:iLayer+1] != neighbor.rs[:iLayer+1]:
