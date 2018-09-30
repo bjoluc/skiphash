@@ -4,12 +4,13 @@ from typing import List
 
 import cairo
 import gi
+
+gi.require_version('Gtk', '3.0')
 from gi.repository import GLib, Gtk
 
 from vaud.core import Node, NodeFactory
 from vaud.skipplus import RS_BIT_LENGTH, SkipNode, SkipNodeReference, prefix
 
-gi.require_version('Gtk', '3.0')
 
 #color constants
 NODE_COLOR_EVEN_RS = (0.266, 0.623, 0.835) #(0.407, 0.427, 0.650)
