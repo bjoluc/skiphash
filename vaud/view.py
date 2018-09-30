@@ -92,13 +92,12 @@ class Analyzer():
                     map[rsPrefix] = [node]
         return map
 
-class DrawElements:
+class ElementDrawer:
     def __init__(self, screenWidth, screenHeight, nodes: list):
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         self.nodes = nodes
         self.analyzer = Analyzer(nodes)
-        self.updateCounter = 0
 
     def calculateSizes(self) -> None:
         '''
@@ -502,17 +501,7 @@ class DrawElements:
         # draw layer markings
         self.drawLayerMarkings()
 
-        #draw counter
-        CounterText = "update " + str(self.updateCounter)
-        x_bearing, y_bearing, width, height = self.cr.text_extents(CounterText)[:4]
-        xPos = 100
-        yPosText = 200
-        self.cr.move_to(xPos - width / 2 - x_bearing, yPosText - height / 2 - y_bearing)
-        self.cr.show_text(CounterText)
-
     def redraw(self) -> bool:
-        #print("now in the main redraw")
-        self.updateCounter = self.updateCounter+1
         # tell the drawing area to queue a new redraw
         self.widget.queue_draw()
         # needs to return True to continue updates
@@ -545,12 +534,12 @@ class Visualizer(Gtk.Window):
         self.connect('delete-event', Gtk.main_quit)
         # build a drawing area
         self.drawingArea=Gtk.DrawingArea()
-        # make  a new instance of drawElements with appropriate parameters
-        self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
+        # make  a new instance of elementDrawer with appropriate parameters
+        self.elementDrawer = ElementDrawer(self.screenWidth, self.screenHeight, nodes)
         # connect the draw event to the drawSkipPlusGraph method
-        self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)        
+        self.drawingArea.connect('draw', self.elementDrawer.drawSkipPlusGraph)        
         # start timer for draw refreshes
-        GLib.timeout_add(REFRESH_INTERVAL_TIME, self.drawElements.redraw ) 
+        GLib.timeout_add(REFRESH_INTERVAL_TIME, self.elementDrawer.redraw ) 
         # add the drawing area to the scrollable window
         self.scrolledWindow.add(self.drawingArea)
         # add the scrollable window to the GTK window
