@@ -247,7 +247,7 @@ class SkipNode(Node):
                 for w in undesirableNodes:
                     # use the longestCommonPrefixNodes with the minimum id difference (the "closest" ones)
                     nodes = longestCommonPrefixNodes(w, self.N)
-                    delegationDestination = min(nodes, key=lambda x: abs(x.id - self.id))
+                    delegationDestination = min(nodes, key=lambda x: abs(x.id - w.id))
                     delegationDestination.linearise(w)
 
 class SkipNodeFactory(NodeFactory):
