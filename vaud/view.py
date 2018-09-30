@@ -29,8 +29,8 @@ LAYER_TEXT_FONT = "Georgia"
 
 #positioning and size constants
 RELATIVE_DISTANCE_NODES_HORIZONTAL = 3 #how many nodes should fit between two nodes horizontally
-RELATIVE_MINIMUM_NODE_SIZE = 0.013 #defines how large a node must be at the minimum relative to the screen width
-RELATIVE_MAXIMUM_NODE_SIZE = 0.03 #defines how large a node must be at the maximum relative to the screen width
+RELATIVE_MINIMUM_NODE_SIZE = 0.002 #defines how large a node must be at the minimum relative to the screen width
+RELATIVE_MAXIMUM_NODE_SIZE = 0.025 #defines how large a node must be at the maximum relative to the screen width
 
 RELATIVE_TEXT_WIDTH_TO_SCREEN = 1/10.0 #defines the width of the longest text on the left side
 RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT = 0.2 #defines the empty space width left and right to the left column text relative to that text
@@ -40,11 +40,6 @@ RELATIVE_OFFSET_OF_RS_TEXTS = 0.5 #defines how far below the id text will be pla
 
 RELATIVE_RS_LAYER_HEIGHT_TO_NODE_SIZE = 5.9 # defines the height of the rs layer as defined on S.167 relative to the node size. Unlike the slide, in this representation all rs layers will be quidistant in the same i layer
 RELATIVE_DISTANCE_BETWEEN_I_LAYERS_TO_NODE_SIZE = 7.0 #defines the distance between the i layers as defined on S.167 relative to the node size.
-
-RELATIVE_CLIQUE_DISTANCE_SIDE = 0.85 #defines the distance from the side end of the node to the sides of the clique grouping relative to the node size
-RELATIVE_CLIQUE_DISTANCE_ABOVE = 0.3 #defines the distance from the upper end of the node to the upper side of the clique grouping relative to the node size
-RELATIVE_CLIQUE_DISTANCE_BELOW = 1.0 #defines the distance from the lower end of the node to the lower side of the clique grouping relative to the node size
-RELATIVE_CORNER_RADIUS_OF_CLIQUES_TO_HEIGHT = 0.2 #defines the corner radius of the clique groupings relative to their height
 
 RELATIVE_HORIZONTAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.13 #defines how thick an horizontal edge is relative to the node size
 RELATIVE_DIAGONAL_EDGE_THICKNESS_TO_NODE_SIZE = 0.1 #defines how thick an diagonal edge is relative to the node size
@@ -58,6 +53,7 @@ RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is 
 RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.4 #defines how far an arrow head will be offset from the middle of the edge
 
 RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT = 0.7 #defines how much distance there will be between the outer rim of the text emboss and the text itself vertically and horizontally
+RELATIVE_TEXT_EMBOSS_CORNER_RADIUS_TO_HEIGHT = 0.5 #defines the corner radius of the clique groupings relative to their height
 
 # time constants
 REFRESH_INTERVAL_TIME = 1000 # defines how many milliseconds will be between each refresh
@@ -128,10 +124,6 @@ class ElementDrawer:
         self.arrowHeadHeight = RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE*self.nodeSize
         self.arrowHeadWidth = RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE*self.nodeSize
         self.arrowHeadEdgeMedianOffset = RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE*self.nodeSize
-        # how large is a clique grouping
-        self.cliqueDistanceSide = RELATIVE_CLIQUE_DISTANCE_SIDE*self.nodeSize
-        self.cliqueDistanceAbove = RELATIVE_CLIQUE_DISTANCE_ABOVE*self.nodeSize
-        self.cliqueDistanceBelow = RELATIVE_CLIQUE_DISTANCE_BELOW*self.nodeSize
         # how large is a level marking - currently using a BAD solution
         self.levelMarkingMaxWidth = RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth
         self.sideWidth = (2*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +1)*self.levelMarkingMaxWidth
@@ -143,6 +135,7 @@ class ElementDrawer:
         textEmbossSizeOffset = RELATIVE_TEXT_EMBOSS_SIZE_OFFSET_TO_TEXT_HEIGHT*heightOfRsText
         self.textEmbossWidthRadius = (self.widthOfRsText)/2.0+textEmbossSizeOffset
         self.textEmbossHeightRadius = (heightOfRsText/2.0)+textEmbossSizeOffset
+        self.textEmbossCornerRadius = RELATIVE_TEXT_EMBOSS_CORNER_RADIUS_TO_HEIGHT*2.0*self.textEmbossHeightRadius
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
 
@@ -171,14 +164,17 @@ class ElementDrawer:
         '''
         #return (self.iLayerDistance*(iLayer+1)) + (self.rsLayerDistance*(math.pow(2,iLayer+1)-2+rsLayer))
         
-        distance = 0
-        previousPrefixLength = 0
+        # start with an offset of the rsLayer distance
+        distance = self.rsLayerDistance
+        previousPrefixLength = -1
 
         for prefix in self.analyzer.prefixes:
             # has the iLayer changed
             if prefix.length() > previousPrefixLength:
-                # add iLayer distance
-                distance = distance+self.iLayerDistance
+                # add iLayer distance if it's not the first iteration where previousPrefixLength is still -1
+                if previousPrefixLength != -1:
+                    distance = distance+self.iLayerDistance
+
                 previousPrefixLength = prefix.length()
             else: # if not add rsLayer distance
                 distance = distance+self.rsLayerDistance
@@ -201,15 +197,12 @@ class ElementDrawer:
 
     def drawRounded(self, upperLeftX: float, upperLeftY: float, lowerRightX: float, lowerRightY: float) -> None:
         """ draws rectangles with rounded (circular arc) corners """
-        aspect = 1.0
-        cornerRadius = (lowerRightY-upperLeftY)*RELATIVE_CORNER_RADIUS_OF_CLIQUES_TO_HEIGHT
-        radius = cornerRadius/aspect
         degrees = math.pi / 180
 
-        self.cr.arc(lowerRightX - radius, upperLeftY + radius, radius, -90 * degrees, 0 * degrees)
-        self.cr.arc(lowerRightX - radius, lowerRightY - radius, radius, 0 * degrees, 90 * degrees)
-        self.cr.arc(upperLeftX + radius, lowerRightY - radius, radius, 90 * degrees, 180 * degrees) 
-        self.cr.arc(upperLeftX + radius, upperLeftY + radius, radius, 180 * degrees, 270 * degrees)
+        self.cr.arc(lowerRightX - self.textEmbossCornerRadius, upperLeftY + self.textEmbossCornerRadius, self.textEmbossCornerRadius, -90 * degrees, 0 * degrees)
+        self.cr.arc(lowerRightX - self.textEmbossCornerRadius, lowerRightY - self.textEmbossCornerRadius, self.textEmbossCornerRadius, 0 * degrees, 90 * degrees)
+        self.cr.arc(upperLeftX + self.textEmbossCornerRadius, lowerRightY - self.textEmbossCornerRadius, self.textEmbossCornerRadius, 90 * degrees, 180 * degrees) 
+        self.cr.arc(upperLeftX + self.textEmbossCornerRadius, upperLeftY + self.textEmbossCornerRadius, self.textEmbossCornerRadius, 180 * degrees, 270 * degrees)
 
         self.cr.close_path()
         self.cr.fill()
@@ -388,15 +381,17 @@ class ElementDrawer:
         #set correct font size
         self.cr.set_font_size(self.levelTextFontSize)
 
-        distance = 0
-        previousPrefixLength = 0
+        # start with an offset of the rsLayer distance
+        distance = self.rsLayerDistance
+        previousPrefixLength = -1
 
         for prefix in self.analyzer.prefixes:
 
             # has the iLayer changed
             if prefix.length() > previousPrefixLength:
-                #increase distance by iLayerDistance
-                distance = distance+self.iLayerDistance
+                # add iLayer distance if it's not the first iteration where previousPrefixLength is still -1
+                if previousPrefixLength != -1:
+                    distance = distance+self.iLayerDistance
                 previousPrefixLength = prefix.length()
 
                 #calculate position of the i label
