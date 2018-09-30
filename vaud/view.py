@@ -57,6 +57,9 @@ RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE = 0.8 #defines how wide an arrow head is 
 RELATIVE_ARROW_HEAD_EDGE_MEDIAN_OFFSET_TO_NODE_SIZE = 0.5 #defines how far an arrow head will be offset from the middle of the edge
 
 
+# time constants
+REFRESH_INTERVAL_TIME = 1000 # defines how many milliseconds will be between each refresh
+
 class Analyzer():
     """
     A class for creating structured representations of skip plus graph data.
@@ -106,7 +109,6 @@ class DrawElements:
         self.nodeSize = (self.screenWidth - ((4*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +2) *RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth)) / (self.amountNodes + ((self.amountNodes -1) * RELATIVE_DISTANCE_NODES_HORIZONTAL))
         self.nodeSize = max(RELATIVE_MINIMUM_NODE_SIZE*self.screenWidth, self.nodeSize)
         self.nodeSize = min(RELATIVE_MAXIMUM_NODE_SIZE*self.screenWidth, self.nodeSize)
-        #print("self.nodeSize: " + str(self.nodeSize))
         # how wide is the horizontal distance between nodes
         self.distanceNodesHorizontal = (RELATIVE_DISTANCE_NODES_HORIZONTAL+1)*self.nodeSize
         # how tall is an rs layer
@@ -128,19 +130,15 @@ class DrawElements:
         self.cliqueDistanceSide = RELATIVE_CLIQUE_DISTANCE_SIDE*self.nodeSize
         self.cliqueDistanceAbove = RELATIVE_CLIQUE_DISTANCE_ABOVE*self.nodeSize
         self.cliqueDistanceBelow = RELATIVE_CLIQUE_DISTANCE_BELOW*self.nodeSize
-        #print("cliqueDistanceAbove: " + str(self.cliqueDistanceAbove))
         # how large is a level marking - currently using a BAD solution
         self.levelMarkingMaxWidth = RELATIVE_TEXT_WIDTH_TO_SCREEN*self.screenWidth
         self.sideWidth = (2*RELATIVE_BREAK_NEXT_TO_LEFT_COLUMN_TEXT +1)*self.levelMarkingMaxWidth
         self.levelTextFontSize = self.calculateFontSizeToFitWidth(LAYER_TEXT_FONT, self.levelMarkingMaxWidth, self.rsLength+6) #there are 6 additional characters: rs=...  
-        #print("levelMarkingMaxWidth is " + str(self.levelMarkingMaxWidth))
-        #print("sideWidth is " + str(self.sideWidth))
         # how large is the id text - currently using a BAD solution
         self.widthOfRsText = RELATIVE_WIDTH_OF_RS_TEXTS*self.nodeSize  
         self.rsTextFontSize = self.calculateFontSizeToFitWidth(RS_TEXT_FONT, self.widthOfRsText, self.rsLength)  
         # calculate the canvas width and height
         self.canvasWidth = self.sideWidth*2 + ((self.amountNodes-1)*self.distanceNodesHorizontal) + self.nodeSize
-        #print("self.canvasWidth " + str(self.canvasWidth))
 
     def calculateFontSizeToFitWidth (self, fontface: str, allowedWidth: float, maxTextLength: int) -> int:
         '''
@@ -153,7 +151,7 @@ class DrawElements:
         #set the font size to a huge value
         self.cr.set_font_size(10000)
         # get the extents if the font was scaled by 10000
-        x_bearing, y_bearing, width, height = (self.cr.text_extents("0"*maxTextLength))[:4]
+        width = (self.cr.text_extents("0"*maxTextLength))[2]
         # calculate scale factor
         scaleFactor : float = allowedWidth/width
         newFontSize = 10000*scaleFactor
@@ -192,10 +190,10 @@ class DrawElements:
         return -1
 
     def calculateHorizontalPositionOfNode (self, nodeXPos) ->float:
-        '''Calculates the absolute horizontal position of a node based on its rank of all nodes'''
+        '''Calculates the absolute horizontal position of a node based on its index of all nodes'''
         return self.sideWidth+ self.distanceNodesHorizontal * nodeXPos
 
-    def draw_rounded(self, upperLeftX: float, upperLeftY: float, lowerRightX: float, lowerRightY: float):
+    def draw_rounded(self, upperLeftX: float, upperLeftY: float, lowerRightX: float, lowerRightY: float) -> None:
         """ draws rectangles with rounded (circular arc) corners """
         aspect = 1.0
         cornerRadius = (lowerRightY-upperLeftY)*RELATIVE_CORNER_RADIUS_OF_CLIQUES_TO_HEIGHT
@@ -230,9 +228,7 @@ class DrawElements:
         self.draw_rounded(upperLeftX, upperLeftY, lowerRightX, lowerRightY)
         
     def drawArrowHead(self, edgeMedianX:float, edgeMedianY:float, edgeMedianAngle:float) -> None:
-        self.arrowHeadHeight = RELATIVE_ARROW_HEAD_HEIGHT_TO_NODE_SIZE*self.nodeSize
-        self.arrowHeadWidth = RELATIVE_ARROW_HEAD_WIDTH_TO_NODE_SIZE*self.nodeSize
-
+        ''' draws a triangle symbolizing an arrow head located on an edge, given the median point of the edge and its angle at that point'''
         #precalculate the cos and sin values of the angle
         cosAngle = math.cos(edgeMedianAngle)
         sinAngle = math.sin(edgeMedianAngle)
@@ -278,19 +274,19 @@ class DrawElements:
         x2Pos = self.calculateHorizontalPositionOfNode(toIndex)
         yPos = self.calculateVerticalPositionOfNode(fromNode, iLayer)
 
-        self.cr.move_to(x1Pos,yPos)
-        self.cr.line_to(x2Pos,yPos)
-        self.cr.stroke()
-
         if fromIndex<toIndex: #arrowhead points right
             arrowHeadAngle = 0
         else: #arrowHead points left
             arrowHeadAngle = math.pi
 
+        #draw
+        self.cr.move_to(x1Pos,yPos)
+        self.cr.line_to(x2Pos,yPos)
+        self.cr.stroke()
         self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, yPos, arrowHeadAngle)
 
     def drawDiagonalEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
-        ''' draws a diagonal edge from node from to node to'''
+        ''' draws a diagonal edge from fromNode from to toNode'''
         #set color
         self.cr.set_source_rgb(*EDGE_DIAGONAL_COLOR)
         #set line thickness
@@ -313,10 +309,10 @@ class DrawElements:
         if fromIndex>toIndex: #arrowhead points left. Add pi. Flip it 180°
             arrowHeadAngle = arrowHeadAngle + math.pi
 
-        #print("arrowHeadAngle: " + str(arrowHeadAngle))
         self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, (y2Pos-y1Pos)/2.0+y1Pos, arrowHeadAngle)
 
     def drawCurvedEdge(self, fromNode:Node, toNode:Node, iLayer: int) -> None:
+        ''' draws a bezier curve from fromNode from to toNode'''
         #set color
         self.cr.set_source_rgb(*EDGE_CURVED_COLOR)
         #set line thickness
@@ -337,29 +333,20 @@ class DrawElements:
             controlY = yPos-self.curvedEdgeControlPointHeight
             arrowHeadY = yPos- (3.0*self.curvedEdgeControlPointHeight/4.0)
 
-        # draw
-        self.cr.move_to(x1Pos,yPos)
-        self.cr.curve_to(control1X,controlY,  control2X,controlY,  x2Pos,yPos)
-        self.cr.stroke()
-
         if fromIndex<toIndex: #arrowhead points right
             arrowHeadAngle = 0
         else: #arrowHead points left
             arrowHeadAngle = math.pi
 
-        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
-        '''
-        height = 3/4 *(yPos+self.curvedEdgeControlPointHeight) + 1/4 *(yPos)
-        self.cr.move_to(x1Pos,height)
-        self.cr.line_to(x2Pos,height)
+        # draw
+        self.cr.move_to(x1Pos,yPos)
+        self.cr.curve_to(control1X,controlY,  control2X,controlY,  x2Pos,yPos)
         self.cr.stroke()
-
-        #3/4 Ymax + 1/4 Ymin
-        '''
+        self.drawArrowHead((x2Pos-x1Pos)/2.0+x1Pos, arrowHeadY, arrowHeadAngle)
 
     def drawNodeAndRsText(self, node: Node, iLayer: int) -> None:
         #calculate position for node
-        xPos = self.calculateHorizontalPositionOfNode(self.analyzer.nodeToIndexMap[node])
+        xPos = self.calculateHorizontalPositionOfNode(self.getIndexOfNode(node))
         yPos = self.calculateVerticalPositionOfNode(node, iLayer)
         #set color for node
         rsLayer = self.calculateRsLayerOfNode(node, iLayer)
@@ -368,7 +355,6 @@ class DrawElements:
         else:
             self.cr.set_source_rgb(*NODE_COLOR_ODD_RS)
         #place single node
-        #print("place on " + str(xPos) + " " + str(yPos))
         self.cr.arc(xPos, yPos, self.nodeSize/2.0, 0, 2 * math.pi)
         self.cr.fill()
         #calculate position of the id text
@@ -412,8 +398,6 @@ class DrawElements:
             else: #increase distance by rsLayer distance
                 distance = distance+self.rsLayerDistance
 
-            
-            
             #calculate position of the rs label
             xPos = self.sideWidth/2.0
             #set correct text
@@ -435,7 +419,6 @@ class DrawElements:
 
     def getIndexOfNode (self, node:Node) -> int:
         '''returns the index or the relative horizontal position of the node'''
-        #return self.nodes.index(node)
         return self.analyzer.nodeToIndexMap[node]
 
     def checkForIntermediateNodes (self, node1:Node, node2:Node, rsPrefix) -> bool:
@@ -462,11 +445,6 @@ class DrawElements:
         '''takes a node and draws it on the appropriate position on the skip+ graph'''
         # for each i-layer
         for iLayer in range(self.rsLength-1):
-            # find rs
-            rsText = node.rs.to01()
-            #print("rsText: " + str(rsText))
-            # find rs-layer
-            rsLayer = self.calculateRsLayerOfNode(node, iLayer)
             # call drawNodeAndRsText
             self.drawNodeAndRsText(node, iLayer)
         
@@ -490,7 +468,6 @@ class DrawElements:
     def groupNodes(self, nodes: list) ->None:
         # find out which cliques exist
 
-
         # find i-layer
         # find rs-layer
         # find lowest horizontal position
@@ -498,10 +475,8 @@ class DrawElements:
         # call drawCliqueGrouping
         pass
 
-    def drawSkipPlusGraph(self, widget, cr):
+    def drawSkipPlusGraph(self, widget, cr) -> None:
         '''draw call for the entire skip+ graph'''
-
-        #print("starting drawing")
         self.cr = cr
         self.widget = widget
 
@@ -527,8 +502,6 @@ class DrawElements:
         # draw layer markings
         self.drawLayerMarkings()
 
-        #print("done with drawing")
-
         #draw counter
         CounterText = "update " + str(self.updateCounter)
         x_bearing, y_bearing, width, height = self.cr.text_extents(CounterText)[:4]
@@ -537,63 +510,50 @@ class DrawElements:
         self.cr.move_to(xPos - width / 2 - x_bearing, yPosText - height / 2 - y_bearing)
         self.cr.show_text(CounterText)
 
-        return False
-
     def redraw(self) -> bool:
         #print("now in the main redraw")
         self.updateCounter = self.updateCounter+1
+        # tell the drawing area to queue a new redraw
         self.widget.queue_draw()
-        #self.drawSkipPlusGraph(self.widget, self.cr)
-        '''
-        self.calculateSizes()
-
-        #paint background color
-        self.cr.set_source_rgb(*BACKGROUND_COLOR)
-        self.cr.paint()
-
-        # draw edges
-        for nodeCounter,node in enumerate(self.nodes):
-            self.connectNode(node)
-
-        # draw nodes
-        for node in self.nodes:
-            self.placeNode(node)
-              
-        # draw layer markings
-        self.drawLayerMarkings()
-
-        '''
+        # needs to return True to continue updates
         return True
-
 
 class Visualizer(Gtk.Window):
 
     def __init__(self, nodes: List[SkipNode]):
+        # Call Window constructor
         super(Visualizer, self).__init__()
-
+        
+        #set title
         self.set_title("Skip+ Graph")
+        # build a scrollable window
         self.scrolledWindow = Gtk.ScrolledWindow()
+        # set the scrollable window to always show the scrollbars
         self.scrolledWindow.set_policy(Gtk.PolicyType.ALWAYS, Gtk.PolicyType.ALWAYS)
+        # get the screen component
         self.screen = self.scrolledWindow.get_screen()
         # Using the screen of the Window, the monitor it's on can be identified
         self.m = self.screen.get_monitor_at_window(self.screen.get_active_window())
         # Then get the geometry of that monitor
         self.monitor = self.screen.get_monitor_geometry(self.m)
+        # assign the screen's width and height accordingly
         self.screenWidth = self.monitor.width
         self.screenHeight = self.monitor.height
+        # set window to fill entire screen
         self.set_default_size(self.screenWidth,self.screenHeight)
+        # connect the close button to the quit action
         self.connect('delete-event', Gtk.main_quit)
+        # build a drawing area
         self.drawingArea=Gtk.DrawingArea()
-
+        # make  a new instance of drawElements with appropriate parameters
         self.drawElements = DrawElements(self.screenWidth, self.screenHeight, nodes)
-        self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)
-        
-        GLib.timeout_add(1000, self.drawElements.redraw)
-
+        # connect the draw event to the drawSkipPlusGraph method
+        self.drawingArea.connect('draw', self.drawElements.drawSkipPlusGraph)        
+        # start timer for draw refreshes
+        GLib.timeout_add(REFRESH_INTERVAL_TIME, self.drawElements.redraw ) 
+        # add the drawing area to the scrollable window
         self.scrolledWindow.add(self.drawingArea)
+        # add the scrollable window to the GTK window
         self.add(self.scrolledWindow)
-        
+        # show all elements
         self.show_all()
-    
-    def expose(self):
-        pass
