@@ -113,10 +113,17 @@ def skipRange(i: int, v: SkipNodeReference, N: Set[SkipNodeReference]) -> Set[Sk
     """
     range(i, v, N) = [low(i, v, N), high(i, v, N)]
     """
-    vPrefix = prefix(i,v)
+    vPrefix = prefix(i, v)
     l = low(i, v, N)
     h = high(i, v, N)
     return set(w for w in N if prefix(i, w) == vPrefix and l <= w and w <= h)
+
+def filterByPrefix(i: int, v: SkipNodeReference, nodes: Set[SkipNodeReference]) -> Set[SkipNodeReference]:
+    """
+    Returns {w ∈ nodes | prefix(i, w) = prefix(i, v)}
+    """
+    vPrefix = prefix(i, v)
+    return set(w for w in nodes if prefix(i, w) == vPrefix)
 
 def commonPrefixLength(v: bitarray, w: bitarray) -> int:
     """
@@ -178,24 +185,25 @@ class SkipNode(Node):
     def timeout(self):
         # See Chapter 5, Slide 169 f.
         for i in range(RS_BIT_LENGTH-1):
-            # partition range of level i by left and right nodes
-            leftRange = []
-            rightRange = []
-            for x in self.ranges[i]:
+            # partition neighborhood of level i by left and right nodes
+            levelNeighborhood = filterByPrefix(i, self.reference, self.ranges[i])
+            leftNodes = []
+            rightNodes = []
+            for x in levelNeighborhood:
                 if x < self.reference:
-                    leftRange.append(x)
+                    leftNodes.append(x)
                 if x > self.reference:
-                    rightRange.append(x)
+                    rightNodes.append(x)
 
             # introduce nodes as shown below
-            # leftRange: v1 -> v2 -> ... -> self
-            # rightRange: self <- ... <- v(n-1) <- vn
+            # leftNodes: v1 -> v2 -> ... -> self
+            # rightNodes: self <- ... <- v(n-1) <- vn
 
-            leftRange.sort()
-            rightRange.sort(reverse=True)
+            leftNodes.sort()
+            rightNodes.sort(reverse=True)
 
             # Part a: Linearizing
-            for r in (leftRange, rightRange):
+            for r in (leftNodes, rightNodes):
                 for i in range(len(r)-1):
                     r[i].linearise(r[i+1])
                 if len(r) > 0:
@@ -206,10 +214,10 @@ class SkipNode(Node):
             # - left nodes to first right node
             # - right nodes to first left node
 
-            for range1, range2 in ((leftRange, rightRange), (rightRange, leftRange)):
-                if len(range2) > 0:
-                    closestRange2Node = range2[-1] # last node in right resp. left range
-                    for v in range1:
+            for side1, side2 in ((leftNodes, rightNodes), (rightNodes, leftNodes)):
+                if len(side2) > 0:
+                    closestRange2Node = side2[-1] # last node in right resp. left nodes
+                    for v in side1:
                         if closestRange2Node in skipRange(i, v, self.N):
                             # this node thinks that closestRange2Node is in v's range
                             v.linearise(closestRange2Node)
