@@ -183,6 +183,11 @@ class SkipNode(Node):
         self.nodesInRanges = nodesInRanges
     
     def timeout(self):
+        # Introducing us to all of our neighbors - not mentioned on the slides.
+        # Still seems to be necessary in order to prevent weak connectedness.
+        for n in self.N:
+            n.linearise(self.reference)
+
         # See Chapter 5, Slide 169 f.
         for i in range(RS_BIT_LENGTH-1):
             # partition neighborhood of level i by left and right nodes
@@ -232,7 +237,6 @@ class SkipNode(Node):
             if len(self.nodesInRanges) == 0:
                 # There are no nodes in our ranges.
                 # Let's better keep our current neighbors instead of destroying the connectedness!
-                # TODO: May we do this?
                 pass
             else:
                 undesirableNodes = self.N.difference(self.nodesInRanges) # nodes that are not in any range now
