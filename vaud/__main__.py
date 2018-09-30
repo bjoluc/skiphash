@@ -7,6 +7,9 @@ import logging
 import sys
 
 from twisted.application.internet import TimerService
+
+import gi
+gi.require_version('Gtk', '3.0')
 from twisted.internet import gtk3reactor
 gtk3reactor.install() # If this does not happen right here, importing the reactor won't work.
 from twisted.internet import reactor
@@ -20,7 +23,7 @@ from vaud.view import Visualizer
 # setup stdout logging
 
 rootLogger = logging.getLogger()
-rootLogger.setLevel(logging.INFO)
+rootLogger.setLevel(logging.DEBUG)
 
 streamHandler = logging.StreamHandler(sys.stdout)
 streamHandler.setLevel(logging.DEBUG)
