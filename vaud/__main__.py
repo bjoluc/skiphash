@@ -23,7 +23,7 @@ from vaud.view import Visualizer
 # setup stdout logging
 
 rootLogger = logging.getLogger()
-rootLogger.setLevel(logging.DEBUG)
+rootLogger.setLevel(logging.INFO)
 
 streamHandler = logging.StreamHandler(sys.stdout)
 streamHandler.setLevel(logging.DEBUG)
