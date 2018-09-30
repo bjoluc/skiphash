@@ -420,6 +420,7 @@ class NodeFactory:
         self._nextPort = startPort
         self.registry = {}
         self.nodes = []
+        self.idToNodeMap = {}
 
     def newNode(self):
         # get new port
@@ -430,6 +431,7 @@ class NodeFactory:
         self._postInitNode(node, isFirstNode)
         self.registry[port] = node
         self.nodes.append(node)
+        self.idToNodeMap[node.id] = node
         return node
     
     def shutdown(self) -> defer.Deferred:
@@ -444,3 +446,6 @@ class NodeFactory:
     
     def _postInitNode(self, node: Node, isFirstNode: bool) -> None:
         """Will be called after each _initNode call, providing the new node."""
+    
+    def getLocalNodeByReference(self, ref: NodeReference):
+        return self.idToNodeMap.get(ref.id, None)
