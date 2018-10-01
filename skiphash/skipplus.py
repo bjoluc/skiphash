@@ -6,7 +6,7 @@ from bitarray import bitarray
 from twisted.internet import defer
 from twisted.spread import pb
 
-from vaud.core import (CopyableBitArray, Node, NodeFactory, NodeReference,
+from skiphash.core import (CopyableBitArray, Node, NodeFactory, NodeReference,
                        PseudoNodeReference, eprint, randomBitArray,
                        remoteMethod)
 
@@ -46,7 +46,7 @@ class SkipNodeReference(NodeReference):
     def rs(self, rs: CopyableBitArray):
         self._rs = rs
 
-pb.setUnjellyableForClass('vaud.skipplus.SkipNodeReference', SkipNodeReference)
+pb.setUnjellyableForClass('skiphash.skipplus.SkipNodeReference', SkipNodeReference)
 
 
 def prefix(i: int, v: Union["SkipNode", SkipNodeReference, bitarray]) -> CopyableBitArray:

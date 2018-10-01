@@ -14,8 +14,8 @@ from twisted.internet import gtk3reactor
 gtk3reactor.install() # If this does not happen right here, importing the reactor won't work.
 from twisted.internet import reactor
 
-from vaud.skipplus import SkipNode, SkipNodeFactory
-from vaud.view import Visualizer
+from skiphash.skipplus import SkipNode, SkipNodeFactory
+from skiphash.view import Visualizer
 
 # For twisted reactor method calls:
 # pylint: disable=maybe-no-member

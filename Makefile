@@ -5,10 +5,10 @@ dev:
 	pipenv install --dev
 
 test:
-	pipenv run py.test -v --exitfirst vaud
+	pipenv run py.test -v --exitfirst skiphash
 
 run:
-	pipenv run python -m vaud --visualize -n 10
+	pipenv run python -m skiphash --visualize -n 10
 
 requirements:
 	pipenv run pipenv_to_requirements

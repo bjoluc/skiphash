@@ -8,8 +8,8 @@ from twisted.internet import defer, reactor
 from twisted.internet.address import IPv4Address
 from twisted.python import log
 
-from vaud import thisHost
-from vaud.core import CopyableBitArray, Node, NodeFactory, NodeReference, randomBitArray, remoteMethod
+from skiphash import thisHost
+from skiphash.core import CopyableBitArray, Node, NodeFactory, NodeReference, randomBitArray, remoteMethod
 
 observer = log.PythonLoggingObserver()
 observer.start()

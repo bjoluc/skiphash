@@ -3,9 +3,9 @@ from typing import Dict
 from twisted.internet import defer
 from twisted.spread import flavors, pb
 
-import vaud.skipplus as skip
+import skiphash.skipplus as skip
 from cityhash import CityHash128
-from vaud.core import projectOntoUnitInterval, remoteMethod
+from skiphash.core import projectOntoUnitInterval, remoteMethod
 
 
 class Entry(flavors.Copyable, flavors.RemoteCopy):
@@ -37,7 +37,7 @@ class Entry(flavors.Copyable, flavors.RemoteCopy):
         """
         return projectOntoUnitInterval(self.keyHash(), 128)
 
-pb.setUnjellyableForClass('vaud.distrhash.Entry', Entry)
+pb.setUnjellyableForClass('skiphash.distrhash.Entry', Entry)
     
 class HashNode(skip.SkipNode):
     """

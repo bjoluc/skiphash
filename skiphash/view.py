@@ -8,8 +8,8 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import GLib, Gtk
 
-from vaud.core import Node, NodeFactory
-from vaud.skipplus import RS_BIT_LENGTH, SkipNode, SkipNodeReference, prefix
+from skiphash.core import Node, NodeFactory
+from skiphash.skipplus import RS_BIT_LENGTH, SkipNode, SkipNodeReference, prefix
 
 
 #color constants

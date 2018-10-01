@@ -7,8 +7,8 @@ from pytest_mock import mocker
 from twisted.internet import defer, reactor
 from twisted.python import log
 
-from vaud.core import sleep
-from vaud.skipplus import SkipNode, SkipNodeFactory, SkipNodeReference
+from skiphash.core import sleep
+from skiphash.skipplus import SkipNode, SkipNodeFactory, SkipNodeReference
 
 observer = log.PythonLoggingObserver()
 observer.start()

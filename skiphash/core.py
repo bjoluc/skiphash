@@ -11,7 +11,7 @@ from twisted.internet import defer, error, reactor
 from twisted.spread import flavors, pb
 
 from cityhash import CityHash64 as CityHash
-from vaud import thisHost
+from skiphash import thisHost
 
 ID_BIT_LENGTH = 64
 
@@ -94,7 +94,7 @@ class CopyableBitArray(bitarray, flavors.Copyable, flavors.RemoteCopy):
         """
         return projectOntoUnitInterval(int(self), self.length())
 
-pb.setUnjellyableForClass('vaud.core.CopyableBitArray', CopyableBitArray)
+pb.setUnjellyableForClass('skiphash.core.CopyableBitArray', CopyableBitArray)
 
 @total_ordering
 class ComparableById:
@@ -252,7 +252,7 @@ class NodeReference(ComparableById, flavors.Copyable, flavors.RemoteCopy):
         self._remoteReferenceDict[self.host, self.port] = instance
         return instance # pass reference on to the next callback
 
-pb.setUnjellyableForClass('vaud.core.NodeReference', NodeReference)
+pb.setUnjellyableForClass('skiphash.core.NodeReference', NodeReference)
 
 class PseudoNodeReference(NodeReference):
     """
@@ -311,7 +311,7 @@ class PseudoNodeReference(NodeReference):
         """
         return None
 
-pb.setUnjellyableForClass('vaud.core.PseudoNodeReference', PseudoNodeReference)
+pb.setUnjellyableForClass('skiphash.core.PseudoNodeReference', PseudoNodeReference)
 
 def remoteMethod(method):
     """
